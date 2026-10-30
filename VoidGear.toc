@@ -1,0 +1,28 @@
+## Interface: 120105, 16001
+## Title: |cff00c7ffVoidGear|r
+## Notes: Gear planner — what the top Mythic+ players of your spec wear, upgrades from raid, M+ and the vault, and where your crests should go
+## Author: Vede
+## Version: 1.0.0
+## SavedVariables: VoidGearDB
+## SavedVariablesPerCharacter: VoidGearCharDB, VoidHubCharDB
+## IconTexture: Interface\Icons\INV_Helmet_08
+
+Compat.lua
+StatWeights.lua
+StatWeightsData.lua
+GearScanner.lua
+ItemScorer.lua
+EffectValues.lua
+EffectValuer.lua
+LootDB.lua
+TopGearData.lua
+PrepData.lua
+Loadouts.lua
+Sources.lua
+Core.lua
+Minimap.lua
+UI.lua
+CharFrame.lua
+UpgradeAdvisor.lua
+Prep.lua
+VoidHubBundle.lua
