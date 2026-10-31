@@ -783,6 +783,7 @@ local function BuildStatPriorityRow(parent)
     parent._statSummary = summary
 
     function parent:UpdateSummary()
+        refreshLabel()   -- the preset follows your spec, so a spec change renames it
         local cur = VoidGear.StatWeights:GetCurrent()
         local parts = {}
         local ranked = {}

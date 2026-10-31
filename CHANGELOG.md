@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.2] — 2026-10-31
+
+### Fixes
+- Changing spec while logged in left the Stat Priority dropdown showing the old spec's name.
+- Prep: after a spec change the augment rune row could disappear, because its description was still the one for the old spec's main stat ("Increases Intellect" on a Guardian druid).
+
 ## [1.0.1] — 2026-10-31
 
 ### Fixes

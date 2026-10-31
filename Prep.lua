@@ -302,6 +302,12 @@ local STAT_WORDS = {
 
 local tipCache = {}   -- itemID -> lower-cased tooltip text (once loaded)
 
+-- Tooltips name your spec's own stat ("Increases Agility by 25" on the augment
+-- rune; Intellect as Resto), so text cached in one spec is wrong in the next.
+local specWatch = CreateFrame("Frame")
+specWatch:RegisterUnitEvent("PLAYER_SPECIALIZATION_CHANGED", "player")
+specWatch:SetScript("OnEvent", function() wipe(tipCache) end)
+
 local function TooltipText(itemID)
     if tipCache[itemID] then return tipCache[itemID] end
     -- An item still loading has a placeholder tooltip ("Retrieving item
