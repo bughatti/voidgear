@@ -310,6 +310,13 @@ local function TooltipText(itemID)
         C_Item.RequestLoadItemDataByID(itemID)
         return nil
     end
+    -- The "Use:" text is the item's spell, which loads on its own: an item that
+    -- is cached but whose spell isn't has a tooltip with no stats in it.
+    local _, spellID = C_Item.GetItemSpell(itemID)
+    if spellID and C_Spell.IsSpellDataCached and not C_Spell.IsSpellDataCached(spellID) then
+        C_Spell.RequestLoadSpellData(spellID)
+        return nil
+    end
     local ok, data = pcall(C_TooltipInfo.GetItemByID, itemID)
     if not ok or not data or not data.lines or #data.lines < 2 then
         C_Item.RequestLoadItemDataByID(itemID)

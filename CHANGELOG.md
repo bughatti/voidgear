@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.1] — 2026-10-31
+
+### Fixes
+- Prep: right after logging in, a consumable whose description hadn't loaded yet could be skipped, so the weapon oil or rune row was missing or the flask pick was wrong until a /reload. The tab now waits for that text and redraws.
+- The login message and the window footer showed an old version number.
+
 ## [1.0.0] — 2026-10-30
 
 First public release.

@@ -34,6 +34,7 @@ local function WaitForItems()
     itemWait.armed = true
     itemWait:RegisterEvent("GET_ITEM_INFO_RECEIVED")
     itemWait:RegisterEvent("ITEM_DATA_LOAD_RESULT")
+    itemWait:RegisterEvent("SPELL_DATA_LOAD_RESULT")   -- a consumable's "Use:" text
 end
 
 ----------------------------------------------------------------------
@@ -1718,7 +1719,7 @@ local function BuildPanel()
     VoidUI:SetFont(footer, 8, "")
     footer:SetPoint("BOTTOMLEFT", 14, 6)
     footer:SetTextColor(0.42, 0.42, 0.48)
-    footer:SetText("v0.4  |  proc-value-aware scoring  |  /vgear scan  /vgear budget  /vgear debug")
+    footer:SetText("v" .. VoidGear.version .. "  |  /vgear scan  /vgear budget  /vgear debug")
 
     UI:SwitchTab(activeTab or "top")
     return panel

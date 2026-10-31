@@ -8,6 +8,7 @@ local function dbg(fmt, ...) if VoidSpy and VoidSpy.Log then VoidSpy:Log("VoidGe
 ----------------------------------------------------------------------
 
 VoidGear = VoidGear or {}
+VoidGear.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("VoidGear", "Version")) or "?"
 
 ----------------------------------------------------------------------
 -- Slash command: /vgear
@@ -278,5 +279,5 @@ f:SetScript("OnEvent", function()
         VoidGear.Scorer:RecalcTrinketBudget()
     end
 
-    VoidGear:Print("Loaded v0.4 (proc value scoring) - type |cffffd200/vgear|r to open.")
+    VoidGear:Print("Loaded v" .. VoidGear.version .. " - type |cffffd200/vgear|r to open.")
 end)
