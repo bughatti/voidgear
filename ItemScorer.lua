@@ -135,7 +135,16 @@ end
 function Sc:HasProc(link)
     if not link then return false end
     local _, spellID = C_Item.GetItemSpell(link)
-    return spellID ~= nil and spellID > 0
+    if spellID ~= nil and spellID > 0 then return true end
+    -- GetItemSpell misses passive "Equip:" procs: read the tooltip for those
+    local tt = C_TooltipInfo and C_TooltipInfo.GetHyperlink and C_TooltipInfo.GetHyperlink(link)
+    for _, line in ipairs(tt and tt.lines or {}) do
+        local t = line.leftText
+        if t and not (issecretvalue and issecretvalue(t)) and (t:find("^Equip:") or t:find("^Use:")) then
+            return true
+        end
+    end
+    return false
 end
 
 ----------------------------------------------------------------------
@@ -158,6 +167,34 @@ function Sc:CalcStaticScore(link, weights, primaryStat)
     local score = self:ScoreStats(stats, weights, primaryStat)
     score = score + WeaponDpsBonus(link, weights, primaryStat)
     return score
+end
+
+-- Are the trinkets / jewelry the calibration reads still loading? (Right after
+-- login their stats can be missing, which would leave the fallback in place.)
+function Sc:CalibrationPending()
+    for _, slotID in ipairs({ 2, 11, 12, 13, 14 }) do
+        local link = GetInventoryItemLink("player", slotID)
+        local id = GetInventoryItemID("player", slotID)
+        if id and not link then return true end   -- worn, link not ready yet
+        if link then
+            local _, spellID = C_Item.GetItemSpell(link)
+            local cached = (not C_Item.IsItemDataCachedByID or C_Item.IsItemDataCachedByID(id))
+                and (not spellID or not C_Spell.IsSpellDataCached or C_Spell.IsSpellDataCached(spellID))
+            -- stats, plus the item + spell text HasProc reads for "Equip:"/"Use:"
+            if not (C_Item.GetItemStats(link) and cached) then
+                C_Item.RequestLoadItemDataByID(id)
+                if spellID and C_Spell.RequestLoadSpellData then C_Spell.RequestLoadSpellData(spellID) end
+                return true
+            end
+            -- a passive "Equip:" has no spell ID to wait on: the tooltip itself must be done
+            local tt = C_TooltipInfo and C_TooltipInfo.GetHyperlink and C_TooltipInfo.GetHyperlink(link)
+            if not (tt and tt.lines and #tt.lines >= 2) then return true end
+            for _, line in ipairs(tt.lines) do
+                if line.leftText == RETRIEVING_ITEM_INFO then return true end
+            end
+        end
+    end
+    return false
 end
 
 function Sc:RecalcTrinketBudget()
@@ -248,37 +285,32 @@ function Sc:ScoreLink(link, weights, primaryStat)
 end
 
 ----------------------------------------------------------------------
--- Initialize — registers event to recalc trinket budget on gear change
+-- Initialize — registers event to recalc trinket budget on gear change.
+-- Called from PLAYER_LOGIN (Core.lua), so it calibrates now too: waiting for
+-- PLAYER_LOGIN here never fired, and the gear isn't loaded yet at login.
 ----------------------------------------------------------------------
 function Sc:Init()
     local f = CreateFrame("Frame")
-    f:RegisterEvent("PLAYER_LOGIN")
     f:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
     f:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
     local debounce
-    f:SetScript("OnEvent", function()
+    local function recalc(tries)
+        -- gear still loading: calibrate once it has (a few tries, 1s apart)
+        if VoidGear.Scorer:CalibrationPending() and tries < 10 then
+            debounce = C_Timer.NewTimer(1, function() recalc(tries + 1) end)
+            return
+        end
+        VoidGear.Scorer:RecalcTrinketBudget()
+        if VoidGear.EffectValuer then VoidGear.EffectValuer:Invalidate() end
+        -- an open panel was drawn with the old budget
+        if _G.VoidGear_Panel and _G.VoidGear_Panel:IsShown() then VoidGear.UI:Refresh() end
+    end
+    local function schedule()
         if debounce then debounce:Cancel() end
-        debounce = C_Timer.NewTimer(0.5, function()
-            VoidGear.Scorer:RecalcTrinketBudget()
-            if VoidGear.EffectValuer then VoidGear.EffectValuer:Invalidate() end
-        end)
-    end)
-end
-
-----------------------------------------------------------------------
--- Score an item by ID + target ilvl. Builds a synthetic link.
--- Less accurate than full link (no bonus IDs), but works for candidate
--- drops where we only know "this itemID drops at ~ilvl X".
-----------------------------------------------------------------------
-function Sc:ScoreItemID(itemID, ilvl, weights, primaryStat)
-    if not itemID then return 0, {}, nil end
-    -- Try a synthetic link with player level encoded
-    local plevel = UnitLevel("player") or 80
-    local link = string.format("item:%d::::::::%d:::::", itemID, plevel)
-    local stats = C_Item.GetItemStats(link)
-    if not stats then return 0, {}, nil end
-    local score, breakdown = self:ScoreStats(stats, weights, primaryStat)
-    return score, breakdown, stats
+        debounce = C_Timer.NewTimer(0.5, function() recalc(0) end)
+    end
+    f:SetScript("OnEvent", schedule)
+    schedule()
 end
 
 ----------------------------------------------------------------------

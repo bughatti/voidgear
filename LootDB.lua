@@ -140,7 +140,8 @@ DB.CURATED_WORLD = {
 -- newest expansion, and the keystone dungeons the game lists for this
 -- season -- those come from several expansions, so every tier is walked.
 ----------------------------------------------------------------------
-function DB:Scan(onComplete)
+function DB:Scan(onComplete, attempt)
+    self.scanning = true   -- until the last retry is done (FillMissing waits for it)
     VoidGearDB = VoidGearDB or {}
     VoidGearDB.lootCache = {
         raid        = {},
@@ -153,6 +154,7 @@ function DB:Scan(onComplete)
 
     if not EJ_GetCurrentTier or not EJ_GetInstanceByIndex then
         VoidGear:Warn("Encounter Journal not available")
+        self.scanning = false
         if onComplete then onComplete() end
         return
     end
@@ -274,11 +276,25 @@ function DB:Scan(onComplete)
     if EJ_SetLootFilter and oldClass then EJ_SetLootFilter(oldClass, oldSpec or 0) end
     if oldSlot and EJ.SetSlotFilter then EJ.SetSlotFilter(oldSlot) end
 
+    -- Items the journal listed before their data loaded have no link (it holds
+    -- their level). They were asked for: scan again once they're in (2 more tries).
+    attempt = attempt or 1
+    local noLink = 0
+    for _, bucket in ipairs({ VoidGearDB.lootCache.raid, VoidGearDB.lootCache.mplus, VoidGearDB.lootCache.worldBoss }) do
+        for _, it in ipairs(bucket) do if not it.link then noLink = noLink + 1 end end
+    end
+    if noLink > 0 and attempt < 3 then
+        if onComplete then onComplete() end
+        C_Timer.After(2, function() self:Scan(onComplete, attempt + 1) end)
+        return
+    end
+
     VoidGear:Print(string.format(
         "Scan: %d raids, %d dungeons (loot at +%d), %d world bosses | items: raid=%d, M+=%d, world=%d",
         raidsScanned, dungeonsScanned, keyLevel, worldBossesScanned,
         #VoidGearDB.lootCache.raid, #VoidGearDB.lootCache.mplus, #VoidGearDB.lootCache.worldBoss))
 
+    self.scanning = false
     if onComplete then onComplete() end
 end
 
@@ -351,7 +367,8 @@ end
 function DB:GetWeeklyMplusRuns()
     local runs = {}
     if not C_MythicPlus or not C_MythicPlus.GetRunHistory then return runs end
-    local ok, history = pcall(C_MythicPlus.GetRunHistory, false, true)
+    -- (includePreviousWeeks, includeIncompleteRuns): an abandoned key isn't a key you did
+    local ok, history = pcall(C_MythicPlus.GetRunHistory, false, false)
     if not ok or not history then return runs end
     for _, r in ipairs(history) do
         table.insert(runs, {
@@ -366,50 +383,48 @@ function DB:GetWeeklyMplusRuns()
     return runs
 end
 
-----------------------------------------------------------------------
--- Get this week's raid kills — { instanceName, difficulty, bossesKilled = {bossIndex, ...} }
-----------------------------------------------------------------------
-function DB:GetWeeklyRaidKills()
-    local result = {}
-    RequestRaidInfo()  -- ensure data fresh
-    local num = GetNumSavedInstances()
-    for i = 1, num do
-        local name, _, _, difficulty, locked, _, _, isRaid, _, difficultyName, numEncounters = GetSavedInstanceInfo(i)
-        if isRaid and locked then
-            local killed = {}
-            for b = 1, numEncounters do
-                local bossName, _, isKilled = GetSavedInstanceEncounterInfo(i, b)
-                if isKilled then
-                    table.insert(killed, { index = b, name = bossName })
-                end
-            end
-            if #killed > 0 then
-                table.insert(result, {
-                    instanceName = name,
-                    difficulty   = difficulty,
-                    difficultyName = difficultyName,
-                    killed       = killed,
-                })
-            end
-        end
-    end
-    return result
+-- Raid difficulty IDs, lowest to highest (LFR, Normal, Heroic, Mythic).
+local RAID_RANK = { [17] = 1, [14] = 2, [15] = 3, [16] = 4 }
+
+-- The journal raid an encounter belongs to.
+local function RaidOf(e)
+    return EJ_GetEncounterInfo and select(6, EJ_GetEncounterInfo(e.encounterID)) or 0
 end
 
-----------------------------------------------------------------------
--- Map M+ challenge mode mapID → EJ instanceID
--- (Different API contexts — we cache it once after a scan)
-----------------------------------------------------------------------
-function DB:GetMplusMapInstanceID(challengeMapID)
-    if not C_ChallengeMode or not C_ChallengeMode.GetMapUIInfo then return nil end
-    local name = C_ChallengeMode.GetMapUIInfo(challengeMapID)
-    if not name then return nil end
-    -- Find an instance in our cache matching this name
-    if not VoidGearDB or not VoidGearDB.lootCache or not VoidGearDB.lootCache.instances then return nil end
-    for instID, info in pairs(VoidGearDB.lootCache.instances) do
-        if info.name == name then return instID end
+-- A raid vault unlock lasts the season, but the game only lists this week's
+-- kills. Save them as they happen: raidUnlocks[raid][rank] = furthest uiOrder.
+-- Runs on login and every vault update, not only when the Vault tab is open.
+function DB:RecordRaidUnlocks()
+    VoidGearCharDB = VoidGearCharDB or {}
+    local season = self:SeasonKey()
+    local store = VoidGearCharDB.raidUnlocks
+    if not store or store.season ~= season then
+        store = { season = season }
+        VoidGearCharDB.raidUnlocks = store
     end
-    return nil
+    local RAID = (Enum and Enum.WeeklyRewardChestThresholdType and Enum.WeeklyRewardChestThresholdType.Raid) or 1
+    local encounters = C_WeeklyRewards and C_WeeklyRewards.GetActivityEncounterInfo
+        and C_WeeklyRewards.GetActivityEncounterInfo(RAID, 1)
+    for _, e in ipairs(encounters or {}) do
+        local rank = RAID_RANK[e.bestDifficulty or 0]
+        if rank then
+            local r = RaidOf(e)
+            store[r] = store[r] or {}
+            store[r][rank] = math.max(store[r][rank] or -1, e.uiOrder or 0)
+        end
+    end
+    return store
+end
+
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:RegisterEvent("WEEKLY_REWARDS_UPDATE")
+    f:RegisterEvent("ENCOUNTER_END")
+    f:SetScript("OnEvent", function(_, event)
+        -- the season's dungeon list loads after login; record a moment later
+        C_Timer.After(event == "PLAYER_ENTERING_WORLD" and 5 or 1, function() DB:RecordRaidUnlocks() end)
+    end)
 end
 
 ----------------------------------------------------------------------
@@ -420,61 +435,54 @@ function DB:GetVaultSlotLootPool(slot)
     if not slot then return { items = {}, missingData = "no slot data" } end
 
     if slot.type == "mplus" then
-        local runs = self:GetWeeklyMplusRuns()
-        if #runs == 0 then
-            return { items = {}, missingData = "No M+ runs this week (or API returned empty)" }
+        -- The dungeon row draws from the whole season's Mythic+ loot pool, whichever
+        -- dungeons (Heroic and Mythic 0 included) unlocked the slot.
+        local items = self:GetMplusLoot()
+        if #items == 0 then
+            return { items = {}, missingData = "Click Scan Loot to read this season's dungeon loot" }
         end
-        -- Get unique dungeon mapIDs from runs
-        local seen, dungeons = {}, {}
-        for _, r in ipairs(runs) do
-            if r.mapID and not seen[r.mapID] then
-                seen[r.mapID] = true
-                local instID = self:GetMplusMapInstanceID(r.mapID)
-                if instID then
-                    table.insert(dungeons, { mapID = r.mapID, instanceID = instID })
-                end
-            end
-        end
-        -- Collect loot from those dungeons from our cache
-        local items = {}
-        local mplusCache = self:GetMplusLoot()
-        for _, item in ipairs(mplusCache) do
-            for _, d in ipairs(dungeons) do
-                if VoidGearDB.lootCache.instances[d.instanceID]
-                    and item.instance == VoidGearDB.lootCache.instances[d.instanceID].name then
-                    table.insert(items, item)
-                    break
-                end
-            end
-        end
-        return {
-            items = items,
-            sourceLabel = string.format("%d dungeon(s) ran this week", #dungeons),
-        }
+        local n = 0
+        for _ in pairs(self:SeasonDungeons()) do n = n + 1 end
+        return { items = items, sourceLabel = string.format("this season's %d dungeons", n) }
 
     elseif slot.type == "raid" then
-        local kills = self:GetWeeklyRaidKills()
+        -- A kill unlocks that boss's loot AND every earlier boss's, on that
+        -- difficulty, and an unlock stays for the season: the pool is every boss
+        -- up to the furthest one you've killed at the slot's difficulty or higher.
         local raidCache = self:GetRaidLoot()
-        local items = {}
-        local killedEncounters = {}
-        for _, lock in ipairs(kills) do
-            for _, boss in ipairs(lock.killed) do
-                killedEncounters[boss.name] = true
-            end
-        end
-        for _, item in ipairs(raidCache) do
-            if item.encounterName and killedEncounters[item.encounterName] then
-                table.insert(items, item)
-            end
-        end
-        local count = 0
-        for _ in pairs(killedEncounters) do count = count + 1 end
-        if count == 0 then
+        local encounters = C_WeeklyRewards.GetActivityEncounterInfo
+            and C_WeeklyRewards.GetActivityEncounterInfo(slot.typeID, slot.index)
+        if not encounters or #encounters == 0 then
             return { items = {}, missingData = "No raid kills this week (or saved info hasn't loaded)" }
+        end
+        -- per raid: uiOrder counts within one instance (Blizzard groups them the same way)
+        local need = RAID_RANK[slot.level] or 0
+        local store = self:RecordRaidUnlocks()
+        local furthest = {}
+        for r, ranks in pairs(store) do
+            if type(ranks) == "table" then
+                for rank, order in pairs(ranks) do
+                    if rank >= need then furthest[r] = math.max(furthest[r] or -1, order) end
+                end
+            end
+        end
+        local eligible, count = {}, 0
+        local raidOf = RaidOf
+        for _, e in ipairs(encounters) do
+            if (e.uiOrder or 0) <= (furthest[raidOf(e)] or -1) then
+                eligible[e.encounterID] = true; count = count + 1
+            end
+        end
+        local items = {}
+        for _, item in ipairs(raidCache) do
+            if item.encounterID and eligible[item.encounterID] then table.insert(items, item) end
+        end
+        if count == 0 then
+            return { items = {}, missingData = "No boss killed at this slot's difficulty this season" }
         end
         return {
             items = items,
-            sourceLabel = string.format("%d boss(es) killed this week", count),
+            sourceLabel = string.format("%d boss(es) up to your furthest kill", count),
         }
 
     elseif slot.type == "world" then
@@ -572,6 +580,7 @@ function DB:GetVault()
             for _, a in ipairs(activities) do
                 local slot = {
                     type      = key,
+                    typeID    = typeID,   -- for C_WeeklyRewards.GetActivityEncounterInfo
                     typeLabel = TYPE_LABEL[key],
                     index     = a.index,
                     threshold = a.threshold,
@@ -686,16 +695,22 @@ end
 function DB:FillMissing()
     local c = VoidGearDB and VoidGearDB.lootCache
     if not c then return false end
-    local missing = false
+    local missing, linkReady = false, false
     for _, bucket in ipairs({ c.raid, c.mplus, c.worldBoss }) do
         for _, it in ipairs(bucket or {}) do
+            -- an item that had no link at scan time has loaded since: the journal
+            -- can give its link now (rescan below)
+            if it.id and not it.link and C_Item.IsItemDataCachedByID and C_Item.IsItemDataCachedByID(it.id) then
+                linkReady = true
+            end
             if it.id and (not it.name or it.name == "?") then
                 it.name = C_Item.GetItemNameByID(it.id) or it.name
             end
-            if it.id and not it.link then   -- the journal can hand back an ID only
-                local _, link, quality = C_Item.GetItemInfo(it.id)
-                it.link = link
-                if it.itemQuality == nil then it.itemQuality = quality end
+            -- The journal can hand back an ID only. Its link carries the scanned
+            -- difficulty / key level, so it comes from a re-scan (DB:Scan retries),
+            -- never from the base item (that's a different, lower item level).
+            if it.id and not it.link and it.itemQuality == nil then
+                it.itemQuality = select(3, C_Item.GetItemInfo(it.id))
             end
             if it.link and (it.ilvl or 0) == 0 then
                 it.ilvl = GetDetailedItemLevelInfo(it.link) or 0
@@ -705,6 +720,14 @@ function DB:FillMissing()
                 missing = true
             end
         end
+    end
+    -- the scan's own retries ran out before the data came: scan again (twice at most)
+    if linkReady and not self.scanning and (c.lateRescans or 0) < 2 and self:IsScanned() then
+        local late = (c.lateRescans or 0) + 1
+        self:Scan(function()
+            if VoidGearDB.lootCache then VoidGearDB.lootCache.lateRescans = late end
+            if VoidGear.UI then VoidGear.UI:Refresh() end
+        end)
     end
     return missing
 end
@@ -719,6 +742,14 @@ function DB:IsScanned()
     local c = VoidGearDB and VoidGearDB.lootCache
     return c and c.scannedAt ~= nil and c.seasonKey == self:SeasonKey()
         and c.specID == self:CurrentSpecID() or false
+end
+
+-- This season was scanned, but for another spec: the loot is spec-filtered, so
+-- a spec change needs a fresh scan (the UI runs it by itself).
+function DB:NeedsSpecRescan()
+    local c = VoidGearDB and VoidGearDB.lootCache
+    return c and c.scannedAt ~= nil and c.seasonKey == self:SeasonKey()
+        and c.specID ~= self:CurrentSpecID() or false
 end
 
 function DB:GetScanInfo()

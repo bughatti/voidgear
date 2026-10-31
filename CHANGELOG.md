@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.0.3] — 2026-10-31
+
+### Upgrades (Raid, M+, World, Vault)
+- Weapons are compared as a whole setup: a two-hander against your main hand and off hand together ("Both Hands"), an off-hand item never against a two-hander, a one-hander against your weaker hand when you dual-wield, and Titan's Grip two-handers against the weaker hand.
+- An empty slot shows as "empty slot" instead of hiding the drop or comparing it with your other ring or trinket.
+- A unique-equipped ring or trinket is compared with the one it can't be worn beside.
+- Drops are only scored at their real item level; one the game hasn't sent yet shows "..." until it does, and the loot list rescans by itself once it loads.
+- After a spec change the loot list rescans by itself.
+- Items with a passive "Equip:" effect get credit for it, and trinkets with one no longer set the baseline for what a trinket's stats should be worth.
+- The trinket baseline is now worked out after login once your gear has loaded (it stayed on a rough default before).
+
+### Great Vault
+- Dungeon slots show this season's whole dungeon loot pool, whichever dungeons you ran.
+- Raid slots show every boss up to your furthest kill at that slot's difficulty, kept for the season, per raid.
+- Abandoned keys no longer set the key level loot is shown at.
+
+### Crests
+- Upgrade costs read at the upgrade NPC are only treated as exact while that item's crest discount hasn't changed.
+- A socket's gem no longer counts as growing with the item's level.
+
+### Prep
+- "Highest secondary stat" consumables are valued at the stat you actually have the most of.
+
 ## [1.0.2] — 2026-10-31
 
 ### Fixes

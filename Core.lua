@@ -273,10 +273,10 @@ f:SetScript("OnEvent", function()
     VoidGearDB.userLoadouts = nil
     VoidGearCharDB.activeLoadout = nil
 
-    -- Initialize scorer (registers events for trinket budget recalibration)
+    -- Initialize scorer (calibrates the trinket budget once your gear has loaded,
+    -- and again on gear / spec changes)
     if VoidGear.Scorer and VoidGear.Scorer.Init then
         VoidGear.Scorer:Init()
-        VoidGear.Scorer:RecalcTrinketBudget()
     end
 
     VoidGear:Print("Loaded v" .. VoidGear.version .. " - type |cffffd200/vgear|r to open.")

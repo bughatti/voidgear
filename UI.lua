@@ -308,105 +308,138 @@ local function ScoreCandidate(item, weights, primary, template, templateIlvl)
             if not C_Item.GetItemStats(s) then WaitForItems() end   -- stats still loading
         end
     end
-    local score = link and VoidGear.Scorer:ScoreLink(link, weights, primary)
-        or VoidGear.Scorer:ScoreItemID(item.id, item.ilvl, weights, primary)
-    return score or 0, ilvl, link
+    -- No link: the journal hasn't handed this drop over at its level yet. Don't
+    -- score it at some other level (the scan asks again until it has it).
+    if not link then return 0, ilvl, nil end
+    return (VoidGear.Scorer:ScoreLink(link, weights, primary)) or 0, ilvl, link
 end
 
-local function ComputeUpgrades(lootList)
-    local equipped = VoidGear.Scanner:GetAll()
-    local weights, primary = VoidGear.Scorer:GetActiveContext()
-    local template, templateIlvl = VoidGear.LootDB:MplusVaultTemplate()
+----------------------------------------------------------------------
+-- What a drop would replace, and the score you'd give up for it.
+-- current = { [slotID] = { score, ilvl, link, id } } for what you wear.
+--   Rings / trinkets: the weaker of the two, unless you wear the same item or
+--     one from its unique-equipped group: then that one has to come off.
+--   Two-handers: the main hand AND the off hand (Titan's Grip: the weaker one).
+--   Off-hand items: nothing while you wield a two-hander.
+--   One-handers: the main hand, or the weaker hand when you dual-wield.
+--   An empty slot counts as 0 (the drop is pure gain).
+-- Returns slotID, score given up, equipped data (nil = empty), both hands?
+----------------------------------------------------------------------
+local WAND = (Enum and Enum.ItemWeaponSubclass and Enum.ItemWeaponSubclass.Wand) or 19
 
-    -- Pre-score equipped per slot
-    local currentScore = {}
-    for slotID, eq in pairs(equipped) do
-        local s = VoidGear.Scorer:ScoreLink(eq.link, weights, primary)
-        currentScore[slotID] = { score = s, ilvl = eq.ilvl, link = eq.link, id = eq.id }
-    end
+local function IsTwoHand(idOrLink)
+    if not idOrLink then return false end
+    local _, _, _, loc, _, _, subID = C_Item.GetItemInfoInstant(idOrLink)
+    if loc == "INVTYPE_2HWEAPON" or loc == "INVTYPE_RANGED" then return true end
+    return loc == "INVTYPE_RANGEDRIGHT" and subID ~= WAND   -- guns, crossbows; a wand is one-handed
+end
 
-    local upgrades = {}
-    for _, item in ipairs(lootList) do
-        if item.slot and item.id then
-            -- Some slots (Ring=11, Trinket=13) have two equipped — compare to WORSE one
-            local slotsToCheck = { item.slot }
-            if item.slot == 11 then slotsToCheck = { 11, 12 } end
-            if item.slot == 13 then slotsToCheck = { 13, 14 } end
+-- Fury's Titan's Grip (spell 46917): two two-handers at once.
+local function TitansGrip()
+    return IsPlayerSpell and IsPlayerSpell(46917) or false
+end
 
-            local worstSlot, worstScore, worstData = nil, math.huge, nil
-            for _, s in ipairs(slotsToCheck) do
-                local cur = currentScore[s]
-                if cur and cur.score < worstScore then
-                    worstSlot, worstScore, worstData = s, cur.score, cur
-                end
-            end
+local function IsHandWeapon(idOrLink)
+    local loc = idOrLink and select(4, C_Item.GetItemInfoInstant(idOrLink))
+    return loc == "INVTYPE_WEAPON" or loc == "INVTYPE_WEAPONOFFHAND"
+end
 
-            -- Score the candidate
-            local candScore, candIlvl, candLink = ScoreCandidate(item, weights, primary, template, templateIlvl)
+-- Same unique-equipped group (only one of them can be worn), as a comparable key.
+local function UniqueKey(itemID)
+    if not (itemID and C_Item.GetItemUniquenessByID) then return nil end
+    local ok, _, _, count, catID = pcall(C_Item.GetItemUniquenessByID, itemID)
+    if ok and catID and catID > 0 and (count or 0) <= 1 then return catID end
+    return nil
+end
 
-            if worstSlot and candScore > 0 then
-                local delta, pct = VoidGear.Scorer:Delta(worstScore, candScore)
-                if delta > 0 then
-                    table.insert(upgrades, {
-                        item         = item,
-                        targetSlot   = worstSlot,
-                        currentScore = worstScore,
-                        candScore    = candScore,
-                        ilvl         = candIlvl,
-                        link         = candLink,
-                        delta        = delta,
-                        pct          = pct,
-                        current      = worstData,
-                    })
-                end
+local function ReplaceTarget(item, current)
+    local s = item.slot
+    if s == 11 or s == 13 then
+        local key = UniqueKey(item.id)
+        for _, slot in ipairs({ s, s + 1 }) do
+            local cur = current[slot]
+            if cur and (cur.id == item.id or (key and UniqueKey(cur.id) == key)) then
+                return slot, cur.score, cur
             end
         end
+        local a, b = current[s], current[s + 1]
+        local sa, sb = a and a.score or 0, b and b.score or 0
+        if sa <= sb then return s, sa, a end
+        return s + 1, sb, b
     end
-
-    table.sort(upgrades, function(a, b) return a.delta > b.delta end)
-    return upgrades
+    if s == 16 or s == 17 then
+        local mh, oh = current[16], current[17]
+        -- a two-hander takes both hands, except with Titan's Grip
+        local mhTwo = mh and IsTwoHand(mh.link) and not TitansGrip()
+        if IsTwoHand(item.id) then
+            -- Fury (Titan's Grip) wields two two-handers: a new one replaces the
+            -- weaker hand (an empty hand first)
+            if TitansGrip() then
+                local sm, so = mh and mh.score or 0, oh and oh.score or 0
+                if so < sm then return 17, so, oh end
+                return 16, sm, mh
+            end
+            return 16, (mh and mh.score or 0) + (oh and oh.score or 0), mh, oh ~= nil
+        end
+        if s == 17 then
+            if mhTwo then return nil end
+            return 17, oh and oh.score or 0, oh
+        end
+        if not mhTwo and CanDualWield and CanDualWield()
+           and select(4, C_Item.GetItemInfoInstant(item.id)) == "INVTYPE_WEAPON"
+           and (not oh or IsHandWeapon(oh.link) or (TitansGrip() and IsTwoHand(oh.link))) then
+            local sm, so = mh and mh.score or 0, oh and oh.score or 0
+            if so < sm then return 17, so, oh end
+        end
+        return 16, mh and mh.score or 0, mh
+    end
+    local cur = current[s]
+    return s, cur and cur.score or 0, cur
 end
 
-----------------------------------------------------------------------
--- Compute scored items (NOT filtered to upgrades) — used for "Show All"
-----------------------------------------------------------------------
-local function ComputeAllScored(lootList)
-    local equipped = VoidGear.Scanner:GetAll()
+-- Your equipped gear scored: { [slotID] = { score, ilvl, link, id } }.
+local function ScoreEquipped(weights, primary)
+    local out = {}
+    for slotID, eq in pairs(VoidGear.Scanner:GetAll()) do
+        local s = VoidGear.Scorer:ScoreLink(eq.link, weights, primary)
+        out[slotID] = { score = s, ilvl = eq.ilvl, link = eq.link, id = eq.id }
+    end
+    return out
+end
+
+-- Every drop scored against what it would replace; upgradesOnly drops the rest.
+local function ScoreDrops(lootList, upgradesOnly)
     local weights, primary = VoidGear.Scorer:GetActiveContext()
     local template, templateIlvl = VoidGear.LootDB:MplusVaultTemplate()
-    local currentScore = {}
-    for slotID, eq in pairs(equipped) do
-        local s = VoidGear.Scorer:ScoreLink(eq.link, weights, primary)
-        currentScore[slotID] = { score = s, ilvl = eq.ilvl, link = eq.link, id = eq.id }
-    end
+    local currentScore = ScoreEquipped(weights, primary)
 
     local result = {}
     for _, item in ipairs(lootList) do
         if item.slot and item.id then
-            local slotsToCheck = { item.slot }
-            if item.slot == 11 then slotsToCheck = { 11, 12 } end
-            if item.slot == 13 then slotsToCheck = { 13, 14 } end
-            local worstSlot, worstScore, worstData = nil, math.huge, nil
-            for _, s in ipairs(slotsToCheck) do
-                local cur = currentScore[s]
-                if cur and cur.score < worstScore then
-                    worstSlot, worstScore, worstData = s, cur.score, cur
-                end
-            end
+            local slot, curScore, curData, both = ReplaceTarget(item, currentScore)
             local candScore, candIlvl, candLink = ScoreCandidate(item, weights, primary, template, templateIlvl)
-            if worstSlot and candScore > 0 then
-                local delta, pct = VoidGear.Scorer:Delta(worstScore, candScore)
-                table.insert(result, {
-                    item = item, targetSlot = worstSlot,
-                    currentScore = worstScore, candScore = candScore, ilvl = candIlvl, link = candLink,
-                    delta = delta, pct = pct, current = worstData,
-                })
+            if slot and candScore > 0 then
+                local delta, pct = VoidGear.Scorer:Delta(curScore, candScore)
+                if delta > 0 or not upgradesOnly then
+                    table.insert(result, {
+                        item = item, targetSlot = slot, bothHands = both, empty = curScore <= 0,
+                        currentScore = curScore, candScore = candScore, ilvl = candIlvl, link = candLink,
+                        delta = delta, pct = pct, current = curData,
+                    })
+                end
             end
         end
     end
     table.sort(result, function(a, b) return a.delta > b.delta end)
     return result
 end
+
+local function ComputeUpgrades(lootList) return ScoreDrops(lootList, true) end
+
+----------------------------------------------------------------------
+-- Compute scored items (NOT filtered to upgrades) — used for "Show All"
+----------------------------------------------------------------------
+local function ComputeAllScored(lootList) return ScoreDrops(lootList, false) end
 
 ----------------------------------------------------------------------
 -- Render scored items into a scroll content frame.
@@ -464,18 +497,26 @@ local function RenderUpgrades(content, lootList, emptyMsg, mode)
         row._iconBtn._link   = up.link or up.item.link
         row._iconBtn._tex:SetTexture(up.item.icon or C_Item.GetItemIconByID(up.item.id) or 134400)
 
-        row._slotLbl:SetText(VoidGear.SLOTS[up.targetSlot] or up.item.slotStr or "?")
+        row._slotLbl:SetText(up.bothHands and "Both Hands" or VoidGear.SLOTS[up.targetSlot] or up.item.slotStr or "?")
         row._nameLbl:SetText(up.item.name or "?")
 
-        local curIlvl = (up.current and up.current.ilvl) or 0
-        row._ilvlLbl:SetText(string.format("%d -> %d", curIlvl, up.ilvl or up.item.ilvl or 0))
+        local newIlvl = up.ilvl or up.item.ilvl or 0
+        if up.current then
+            row._ilvlLbl:SetText(string.format("%d -> %d", up.current.ilvl or 0, newIlvl))
+        else
+            row._ilvlLbl:SetText(string.format("empty -> %d", newIlvl))
+        end
 
-        local deltaColor
-        if up.pct >= 20 then deltaColor = "|cff00ff00"
-        elseif up.pct >= 10 then deltaColor = "|cff66ff66"
-        elseif up.pct >= 3 then deltaColor = "|cffffd200"
-        else deltaColor = "|cffaaaaaa" end
-        row._scoreLbl:SetText(string.format("%s+%.1f%%|r", deltaColor, up.pct))
+        if up.empty then
+            row._scoreLbl:SetText("|cff00ff00empty slot|r")   -- no % of nothing
+        else
+            local deltaColor
+            if up.pct >= 20 then deltaColor = "|cff00ff00"
+            elseif up.pct >= 10 then deltaColor = "|cff66ff66"
+            elseif up.pct >= 3 then deltaColor = "|cffffd200"
+            else deltaColor = "|cffaaaaaa" end
+            row._scoreLbl:SetText(string.format("%s%+.1f%%|r", deltaColor, up.pct))
+        end
 
         local src = up.item.instance or "?"
         if up.item.encounterName then src = src .. " - " .. up.item.encounterName end
@@ -1067,39 +1108,26 @@ local function RefreshVaultTab()
 
     local sc = content._scrollChild
     local weights, primary = VoidGear.Scorer:GetActiveContext()
-    local equipped = VoidGear.Scanner:GetAll()
 
     -- Precompute equipped scores
-    local equippedScores = {}
+    local equippedScores = ScoreEquipped(weights, primary)
     local avgScore, count = 0, 0
-    for slotID, eq in pairs(equipped) do
-        local s = VoidGear.Scorer:ScoreLink(eq.link, weights, primary)
-        equippedScores[slotID] = { score = s, ilvl = eq.ilvl }
-        avgScore = avgScore + s; count = count + 1
+    for _, eq in pairs(equippedScores) do
+        avgScore = avgScore + eq.score; count = count + 1
     end
     if count > 0 then avgScore = avgScore / count end
 
+    -- delta, pct, slot it replaces, empty slot?; nil when it can't be scored at
+    -- the vault's level (no vault link: the base item would be a different level)
     local function bestUpgradeDelta(item)
-        -- Compute upgrade delta vs the user's WORST current item in the matching slot
-        if not item.slot then return 0, 0, nil end
-        local slotsToCheck = { item.slot }
-        if item.slot == 11 then slotsToCheck = { 11, 12 } end
-        if item.slot == 13 then slotsToCheck = { 13, 14 } end
-        local worstSlot, worstScore = nil, math.huge
-        for _, s in ipairs(slotsToCheck) do
-            local cur = equippedScores[s]
-            if cur and cur.score < worstScore then
-                worstSlot, worstScore = s, cur.score
-            end
+        if not (item.slot and item.link) then return nil end
+        local slot, curScore = ReplaceTarget(item, equippedScores)
+        local cand = (VoidGear.Scorer:ScoreLink(item.link, weights, primary)) or 0
+        if slot and cand > 0 then
+            local d, p = VoidGear.Scorer:Delta(curScore, cand)
+            return d, p, slot, curScore <= 0
         end
-        local cand = item.link
-            and VoidGear.Scorer:ScoreLink(item.link, weights, primary)
-            or  VoidGear.Scorer:ScoreItemID(item.id, item.ilvl, weights, primary)
-        if worstSlot and cand > 0 then
-            local d, p = VoidGear.Scorer:Delta(worstScore, cand)
-            return d, p, worstSlot
-        end
-        return 0, 0, nil
+        return nil
     end
 
     local y = 0
@@ -1159,11 +1187,12 @@ local function RefreshVaultTab()
                         -- level. Without a vault link, scoring falls back to the itemID.
                         link = vaultLink or nil,
                     }
-                    local d, p, slotMatch = bestUpgradeDelta(syntheticItem)
+                    local d, p, slotMatch, empty = bestUpgradeDelta(syntheticItem)
                     table.insert(scored, {
                         item = syntheticItem,
                         origItem = item,
-                        delta = d, pct = p, targetSlot = slotMatch,
+                        delta = d or -math.huge, pct = p or 0, targetSlot = slotMatch,
+                        empty = empty, unscored = d == nil,
                     })
                     end  -- close IsCurrentSeasonLoot else
                 end
@@ -1194,12 +1223,18 @@ local function RefreshVaultTab()
                     local src = s.item.instance or "?"
                     if s.item.encounterName then src = s.item.encounterName .. " (" .. src .. ")" end
                     row._sourceLbl:SetText(src)
-                    local color
-                    if s.pct >= 10 then color = "|cff00ff00"
-                    elseif s.pct > 0 then color = "|cff66ff66"
-                    elseif s.pct == 0 then color = "|cffaaaaaa"
-                    else color = "|cffaa6666" end
-                    row._scoreLbl:SetText(string.format("%s%+.1f%%|r", color, s.pct))
+                    if s.unscored then
+                        row._scoreLbl:SetText("|cff888888...|r")   -- not at the vault's level yet
+                    elseif s.empty then
+                        row._scoreLbl:SetText("|cff00ff00empty slot|r")
+                    else
+                        local color
+                        if s.pct >= 10 then color = "|cff00ff00"
+                        elseif s.pct > 0 then color = "|cff66ff66"
+                        elseif s.pct == 0 then color = "|cffaaaaaa"
+                        else color = "|cffaa6666" end
+                        row._scoreLbl:SetText(string.format("%s%+.1f%%|r", color, s.pct))
+                    end
                     row:Show()
                     rowY = rowY + 22
                 end
@@ -1744,6 +1779,8 @@ end
 ----------------------------------------------------------------------
 -- Refresh active tab's content
 ----------------------------------------------------------------------
+local specRescan = false   -- a scan for the new spec is running
+
 function UI:Refresh()
     if not panel then return end
     if panel._statRow and panel._statRow.UpdateSummary then
@@ -1751,6 +1788,15 @@ function UI:Refresh()
     end
 
     local mode = (VoidGearCharDB and VoidGearCharDB.showAll) and "all" or "upgrades"
+    -- spec changed since the last scan: the loot list is per spec, so rescan
+    if activeTab ~= "prep" and activeTab ~= "top" and not specRescan and VoidGear.LootDB:NeedsSpecRescan() then
+        specRescan = true
+        VoidGear.LootDB:Scan(function()
+            specRescan = false
+            UI:Refresh()
+        end)
+        return
+    end
     -- scanned drops or vault examples still loading: redraw when they arrive
     if VoidGear.LootDB:FillMissing() then WaitForItems() end
     if VoidGear.LootDB:VaultPending() then WaitForItems() end

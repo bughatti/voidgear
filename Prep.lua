@@ -364,16 +364,36 @@ local function ParseStats(text)
     return got
 end
 
+-- "Your highest secondary stat" is the one you have the most rating in, which
+-- can be a stat your spec weighs low. Combat rating IDs (CR_*), with fallbacks.
+local SECONDARY_RATINGS = {
+    { "Crit",        { CR_CRIT_MELEE or 9, CR_CRIT_RANGED or 10, CR_CRIT_SPELL or 11 } },
+    { "Haste",       { CR_HASTE_MELEE or 18, CR_HASTE_RANGED or 19, CR_HASTE_SPELL or 20 } },
+    { "Mastery",     { CR_MASTERY or 26 } },
+    { "Versatility", { CR_VERSATILITY_DAMAGE_DONE or 29 } },
+}
+
+local function HighestSecondary()
+    local best, bestN
+    for _, s in ipairs(SECONDARY_RATINGS) do
+        local n = 0
+        for _, id in ipairs(s[2]) do
+            local ok, v = pcall(GetCombatRating, id)
+            if ok and type(v) == "number" and not (issecretvalue and issecretvalue(v)) and v > n then n = v end
+        end
+        if not bestN or n > bestN then best, bestN = s[1], n end
+    end
+    return best
+end
+
 -- Score by the spec's weights: your primary stat counts 1, secondaries their weight.
 function Prep:ScoreConsumable(text)
     local weights, primary = VoidGear.Scorer:GetActiveContext()
-    local best = 0
-    for _, k in ipairs({ "Crit", "Haste", "Mastery", "Versatility" }) do
-        best = math.max(best, weights[k] or 0)
-    end
+    local high = HighestSecondary()
+    local highW = high and weights[high] or 0
     local score = 0
     for key, n in pairs(ParseStats(text)) do
-        local w = (key == "PRIMARY" or key == primary) and 1 or (key == "BESTSEC" and best) or weights[key] or 0
+        local w = (key == "PRIMARY" or key == primary) and 1 or (key == "BESTSEC" and highW) or weights[key] or 0
         score = score + n * w
     end
     return score

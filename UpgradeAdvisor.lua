@@ -15,8 +15,9 @@ local GetDetailedItemLevelInfo = (C_Item and C_Item.GetDetailedItemLevelInfo) or
 -- opens we put each equipped item in the upgrade slot for an instant, read
 -- C_ItemUpgrade.GetItemUpgradeItemInfo (per-step crest cost incl. discounts,
 -- per-step ilvl), and clear it again. Cached per item + upgrade level in
--- VoidGearCharDB. Items never seen at the NPC fall back to "same cost per step"
--- and say so in the tooltip.
+-- VoidGearCharDB, and only exact while the item's discount watermark is the same
+-- (DiscountSig). Items never seen at the NPC, or whose watermark moved since,
+-- fall back to "same cost per step" and say so in the tooltip.
 --
 -- Gain model: stats grow ~1% per item level (approximate). Weapon DPS in the
 -- Scorer is linear in ilvl, so it grows by step/ilvl instead.
@@ -78,6 +79,23 @@ local function SlotGUID(slotID)
     return ok and g or nil
 end
 
+-- Crest discounts follow the highest item level you (and your account) have
+-- had in that item's slot -- the "high watermark", which grows with ANY item
+-- you get. A cost recorded under another watermark is no longer exact.
+-- Falls back to your equipped item levels if the game won't say.
+local function DiscountSig(link)
+    local fn = C_ItemUpgrade and C_ItemUpgrade.GetHighWatermarkForItem
+    local ok, char, account = false, nil, nil
+    if fn and link then ok, char, account = pcall(fn, link) end
+    if ok and char then return char .. ":" .. (account or 0) end
+    local parts = {}
+    for _, s in ipairs(SLOTS) do
+        local l = GetInventoryItemLink("player", s[1])
+        parts[#parts + 1] = l and (GetDetailedItemLevelInfo(l) or 0) or 0
+    end
+    return table.concat(parts, ",")
+end
+
 local function CurrencyName(id)
     local ok, c = pcall(C_CurrencyInfo.GetCurrencyInfo, id)
     return ok and c and c.name or nil
@@ -106,7 +124,8 @@ local function RecordPlacedItem(guid)
             steps[li.upgradeLevel] = s
         end
     end
-    CostDB()[guid] = { cur = info.currUpgrade, at = time(), steps = steps }
+    local placed = C_ItemUpgrade.GetItemHyperlink and C_ItemUpgrade.GetItemHyperlink()
+    CostDB()[guid] = { cur = info.currUpgrade, at = time(), steps = steps, sig = DiscountSig(placed) }
     return true
 end
 
@@ -204,9 +223,10 @@ function UA:Compute()
                     slot = slotID, track = info.trackString,
                     cur = info.currentLevel, max = info.maxLevel, ilvl = ilvl,
                 }
-                -- Exact next step from the NPC cache, if it matches the item's current level.
+                -- Exact next step from the NPC cache, if it matches the item's current
+                -- level and its discount watermark hasn't moved since.
                 local entry = db[SlotGUID(slotID) or ""]
-                local nextStep = entry and entry.cur == info.currentLevel
+                local nextStep = entry and entry.cur == info.currentLevel and entry.sig == DiscountSig(link)
                                  and entry.steps[info.currentLevel + 1]
                 if nextStep and nextStep.inc > 0 then
                     r.known, r.step = true, nextStep.inc
@@ -216,10 +236,12 @@ function UA:Compute()
                     local after = entry.steps[info.currentLevel + 2]
                     if after then r.nextCost, r.nextCrest = after.cost, after.crestName end
                 end
-                local score, breakdown = VoidGear.Scorer:ScoreLink(link, weights, primary)
+                local score, breakdown, _, extras = VoidGear.Scorer:ScoreLink(link, weights, primary)
                 score = score or 0
                 local wdps = (breakdown and breakdown.WeaponDPS) or 0
-                r.gainPerIlvl = (score - wdps) * STAT_GROWTH_PER_ILVL + wdps / ilvl
+                -- a socket's gem is the same gem at any item level: it doesn't grow
+                local sockets = (extras and extras.socketValue) or 0
+                r.gainPerIlvl = (score - wdps - sockets) * STAT_GROWTH_PER_ILVL + wdps / ilvl
                 results[slotID] = r
             end
         end

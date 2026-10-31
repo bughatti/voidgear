@@ -52,6 +52,19 @@ EV.TIER_MULT = { S = 1.20, A = 1.05, B = 0.92, C = 0.80 }
 
 -- Simple per-link cache, cleared on spec change (see Invalidate()).
 EV._cache = {}
+EV._byInstance = {}   -- tooltip dataInstanceID -> cache key
+
+-- The game updates a tooltip's data when more of it loads: drop that item's
+-- entry so the next score reads the finished tooltip.
+local tooltipWatch = CreateFrame("Frame")
+tooltipWatch:RegisterEvent("TOOLTIP_DATA_UPDATE")
+tooltipWatch:SetScript("OnEvent", function(_, _, dataInstanceID)
+    local key = dataInstanceID and EV._byInstance[dataInstanceID]
+    if key then
+        EV._cache[key] = nil
+        EV._byInstance[dataInstanceID] = nil
+    end
+end)
 
 local function num(s)
     if not s then return nil end
@@ -153,8 +166,8 @@ end
 
 ----------------------------------------------------------------------
 -- Value an item's non-stat extras: effects + sockets + set.
--- Returns totalExtra, details.  (The tooltip effect scan is gated to
--- trinkets / on-use items so scoring a bag full of plain armor stays cheap.)
+-- Returns totalExtra, details.  (Every item's tooltip is read once: passive
+-- "Equip:" procs on weapons and armor are effects too; the cache keeps it cheap.)
 ----------------------------------------------------------------------
 function EV:ValueExtras(link, weights, primary, budgetPerIlvl, opts)
     if not link then return 0, nil end
@@ -174,18 +187,32 @@ function EV:ValueExtras(link, weights, primary, budgetPerIlvl, opts)
     local specID = (specIdx and specIdx > 0) and GetSpecializationInfo(specIdx) or 0
     local emp = self:Empirical(specID)
 
-    -- Effects (gated): trinket, or anything GetItemSpell flags as on-use.
-    local spellName, spellID = C_Item.GetItemSpell(link)
-    local scanEffects = (equipLoc == "INVTYPE_TRINKET") or (spellID ~= nil)
-    local effectSum = 0
-    if scanEffects and C_TooltipInfo and C_TooltipInfo.GetHyperlink then
+    -- Effects: any item. GetItemSpell only sees on-use spells, so a passive
+    -- "Equip:" proc (an embellishment, a weapon proc) is read from the tooltip.
+    local _, spellID = C_Item.GetItemSpell(link)
+    local effectSum, incomplete = 0, false
+    if C_TooltipInfo and C_TooltipInfo.GetHyperlink then
         local tt = (type(link) == "string") and C_TooltipInfo.GetHyperlink(link)
                    or C_TooltipInfo.GetItemByID(link)
         local lines = {}
+        -- Still loading (the item, its spell text, or "Retrieving item information"):
+        -- score it, don't cache it. A later change to this tooltip drops the entry too.
+        if not (tt and tt.lines and #tt.lines >= 2)
+           or (itemID and C_Item.IsItemDataCachedByID and not C_Item.IsItemDataCachedByID(itemID))
+           or (spellID and C_Spell.IsSpellDataCached and not C_Spell.IsSpellDataCached(spellID)) then
+            incomplete = true
+            if itemID then C_Item.RequestLoadItemDataByID(itemID) end
+            if spellID and C_Spell.RequestLoadSpellData then C_Spell.RequestLoadSpellData(spellID) end
+        end
+        if tt and tt.dataInstanceID then self._byInstance[tt.dataInstanceID] = cacheKey end
         if tt and tt.lines then
             for _, line in ipairs(tt.lines) do
                 if TooltipUtil and TooltipUtil.SurfaceArgs then TooltipUtil.SurfaceArgs(line) end
-                if line.leftText and line.leftText ~= "" then lines[#lines + 1] = line.leftText end
+                local t = line.leftText
+                if t and not (issecretvalue and issecretvalue(t)) then
+                    if t == RETRIEVING_ITEM_INFO then incomplete = true end
+                    if t ~= "" then lines[#lines + 1] = t end
+                end
             end
         end
         for _, eff in ipairs(self:ExtractEffects(lines)) do
@@ -261,7 +288,7 @@ function EV:ValueExtras(link, weights, primary, budgetPerIlvl, opts)
         total = total + details.setValue
     end
 
-    if not (opts and opts.noCache) then
+    if not (opts and opts.noCache) and not incomplete then
         self._cache[cacheKey] = { total = total, details = details }
     end
     return total, details
@@ -272,4 +299,5 @@ end
 ----------------------------------------------------------------------
 function EV:Invalidate()
     wipe(self._cache)
+    wipe(self._byInstance)
 end
