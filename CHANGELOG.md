@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4] — 2026-10-31
+
+### Prep tab
+- **Easier to read.** Columns are labelled (You have, Get, This item, In bags), and the rows are split into **Must fix**, **Optional upgrades** and **Consumables**. Optional upgrades say they aren't on the shopping list.
+- **Shows what you have now:** the enchant on that slot ("Hex of Leeching"), "No diamond", "Empty socket", or for consumables "This one", the other one you carry with its count, or "None".
+- Enchant names drop the "Enchant Helm -" part (the row already names the slot), and the shopping list reads "buy 1" / "have 1, buy 1".
+
 ## [1.0.3] — 2026-10-31
 
 ### Upgrades (Raid, M+, World, Vault)

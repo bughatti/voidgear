@@ -65,6 +65,12 @@ local function SlotGUID(slotID)
     return ok and guid or nil
 end
 
+-- "Enchant Helm - Empowered Rune of Avoidance" -> "Empowered Rune of Avoidance"
+-- (the row already names the slot)
+function Prep:ShortName(name)
+    return name and (name:gsub("^Enchant [^%-]+ %- ", "")) or nil
+end
+
 -- Crafted quality of an item (1 = lower, 2 = higher in Midnight). Falls back to
 -- its place in its group: the game data lists qualities in item ID order.
 local function Quality(itemID, group)
@@ -140,7 +146,8 @@ end
 -- Compute: rows (one per problem) + the shopping list
 ----------------------------------------------------------------------
 -- row = { slot, kind = "enchant"|"gem", socket, severity = "need"|"swap"|"rank",
---         problem, buy = itemID, buyGroup, mode, modeWhy }
+--         problem, now (what you have, short), buy = itemID, buyGroup, mode, modeWhy }
+-- "need" rows are must-fix and go on the shopping list; "swap"/"rank" are optional.
 function Prep:Compute()
     local d = SpecData()
     if not d then return nil end
@@ -177,22 +184,22 @@ function Prep:Compute()
                         local row = { slot = slotID, kind = "enchant", buyGroup = group, mode = mode, modeWhy = why,
                             topName = topName, share = top.n / per }
                         if have == 0 then
-                            row.severity, row.problem = "need", "No enchant"
+                            row.severity, row.problem, row.now = "need", "No enchant", "No enchant"
                         elseif haveInfo and topInfo and haveInfo.name == topInfo.name then
                             -- same enchant: only Best asks for its highest quality
                             if mode == "best" and haveInfo.tier < (maxTier[haveInfo.name] or haveInfo.tier) then
                                 row.severity, row.problem = "rank", "Lower quality of the same enchant"
+                                row.haveName, row.now = haveInfo.name, "Same, lower quality"
                             else
                                 row = nil
                             end
                         elseif have == top.id or (top.item and list[2] and have == list[2].id) then
                             row = nil   -- what top players use (kits: either of their top two)
-                            row = nil
                         elseif haveInfo then
                             row.severity, row.problem = "swap", "Top players use another enchant"
-                            row.haveName = haveInfo.name
+                            row.haveName, row.now = haveInfo.name, self:ShortName(haveInfo.name)
                         else
-                            row.severity, row.problem = "need", "Old or unknown enchant"
+                            row.severity, row.problem, row.now = "need", "Old or unknown enchant", "Old enchant"
                         end
                         if row then
                             row.buy = group and Pick(group, mode)
@@ -226,11 +233,11 @@ function Prep:Compute()
     end
     local diamondPlaced = hasDiamond or not wantDiamond
     for _, s in ipairs(sockets) do
-        local problem
+        local problem, now
         if not s.gemID then
-            problem = "Empty socket"
+            problem, now = "Empty socket", "Empty socket"
         elseif not pd.sameName[s.gemID] then
-            problem = "Old gem (earlier expansion)"
+            problem, now = "Old gem (earlier expansion)", (s.gemName or "Old gem") .. " (old)"
         end
         if problem then
             local g = normal
@@ -239,8 +246,8 @@ function Prep:Compute()
                 local group = pd.sameName[g.id] or { g.id }
                 local mode, why = self:ModeFor(s.slot)
                 rows[#rows + 1] = { slot = s.slot, kind = "gem", socket = s.socket, severity = "need",
-                    problem = problem, buyGroup = group, buy = Pick(group, mode), mode = mode, modeWhy = why,
-                    topName = g.name, haveName = s.gemName }
+                    problem = problem, now = now, buyGroup = group, buy = Pick(group, mode), mode = mode,
+                    modeWhy = why, topName = g.name, haveName = s.gemName }
             end
         end
     end
@@ -250,8 +257,9 @@ function Prep:Compute()
         local group = pd.sameName[diamond.id] or { diamond.id }
         local mode, why = self:ModeFor(s.slot)
         rows[#rows + 1] = { slot = s.slot, kind = "gem", socket = s.socket, severity = "need",
-            problem = "No diamond: swap this gem", buyGroup = group, buy = Pick(group, mode), mode = mode,
-            modeWhy = why, topName = diamond.name, haveName = s.gemName }
+            problem = "No diamond: swap this gem for it", now = "No diamond", buyGroup = group,
+            buy = Pick(group, mode), mode = mode, modeWhy = why, topName = diamond.name, haveName = s.gemName,
+            note = "Most top players have this diamond in one socket. Any socket works; this is your first one." }
     end
 
     -- Consumables ----------------------------------------------------------

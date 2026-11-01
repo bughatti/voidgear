@@ -1269,12 +1269,13 @@ end
 
 ----------------------------------------------------------------------
 -- Prep tab: what to enchant and gem (VoidGear.Prep), and the shopping list.
--- Rows: slot | problem | what to buy | Best/Budget (click to flip that item) | have
+-- Sections: Must fix | Optional upgrades | Consumables | Shopping list.
+-- Rows: slot | what you have now | what to get | Best/Budget (click to flip that item) | in bags
 ----------------------------------------------------------------------
 local PREP_ROW_H = 26
-local PREP_COLS = { slot = 6, problem = 80, problemW = 190, icon = 274, item = 298, modeW = 62, haveW = 54 }
-local SEVERITY_COLOR = { need = "|cffff5555", rank = "|cffffd200", swap = "|cffaaaaaa" }
-local prepRows, prepShop = {}, {}
+local PREP_COLS = { slot = 6, now = 80, nowW = 210, icon = 296, item = 320, modeW = 62, haveW = 50 }
+local SEVERITY_COLOR = { need = "|cffff5555", rank = "|cffffd200", swap = "|cffcccccc" }
+local prepRows, prepShop, prepHeads = {}, {}, {}
 
 local function QualityIcon(itemID, group)
     local tier
@@ -1319,9 +1320,9 @@ local function AcquirePrepRow(sc, i)
     row.slot:SetPoint("LEFT", PREP_COLS.slot, 0)
     row.slot:SetWidth(70)
     row.slot:SetTextColor(P.accent[1], P.accent[2], P.accent[3])
-    row.problem = Text(row, 10)
-    row.problem:SetPoint("LEFT", PREP_COLS.problem, 0)
-    row.problem:SetWidth(PREP_COLS.problemW)
+    row.now = Text(row, 10)
+    row.now:SetPoint("LEFT", PREP_COLS.now, 0)
+    row.now:SetWidth(PREP_COLS.nowW)
     row.icon = ItemIcon(row)
     row.icon:SetPoint("LEFT", PREP_COLS.icon, 0)
     row.item = Text(row, 10)
@@ -1409,6 +1410,11 @@ local function BuildPrepTab(parent)
     parent._budget:SetPoint("TOPRIGHT", -4, -2)
     parent._best = ModeButton("Best", "best")
     parent._best:SetPoint("RIGHT", parent._budget, "LEFT", -4, 0)
+    local quality = parent:CreateFontString(nil, "OVERLAY")
+    VoidUI:SetFont(quality, 10, "")
+    quality:SetPoint("RIGHT", parent._best, "LEFT", -6, 0)
+    quality:SetTextColor(0.7, 0.7, 0.7)
+    quality:SetText("Quality to buy:")
 
     parent._sub = parent:CreateFontString(nil, "OVERLAY")
     VoidUI:SetFont(parent._sub, 9, "")
@@ -1433,9 +1439,10 @@ local function RefreshPrepTab()
     -- the active mode in bright accent, the other dimmed (hover would reset a backdrop color)
     content._best._text:SetText(mode == "best" and "|cff00c7ffBest|r" or "|cff777777Best|r")
     content._budget._text:SetText(mode == "budget" and "|cff00c7ffBudget|r" or "|cff777777Budget|r")
-    for _, r in ipairs(prepRows) do r:Hide(); r.mode:Show() end
+    for _, r in ipairs(prepRows) do r:Hide(); r.mode:Hide() end
     for _, l in ipairs(prepShop) do l:Hide() end
-    if prepShop.head then prepShop.head:Hide() end
+    for _, h in ipairs(prepHeads) do h:Hide() end
+    if prepHeads.cols then for _, fs in ipairs(prepHeads.cols) do fs:Hide() end end
     local sc = content._sc
     local empty = content._list._emptyText
 
@@ -1457,104 +1464,139 @@ local function RefreshPrepTab()
     end
     if res.pending then WaitForItems() end   -- consumable tooltips still loading
     content._title:SetText("Enchants, gems and consumables: what to fix and buy")
-    content._sub:SetText(("From the %d top Mythic+ %s players (Blizzard API). You still click to enchant and socket.")
+    content._sub:SetText(("Enchants and gems: what the %d top Mythic+ %s players use. Consumables: the best for your stats.")
         :format(res.players or 0, res.label or "?"))
     empty:Hide()
 
-    local y = 0
-    if #res.rows == 0 then
-        local ok = AcquirePrepRow(sc, 1)
-        ok:ClearAllPoints()
-        ok:SetPoint("TOPLEFT", 0, 0)
-        ok:SetPoint("RIGHT", 0, 0)
-        ok.slot:SetText("Gear")
-        ok.problem:SetText("|cff66ff66Every enchant and gem matches what the top players use.|r")
-        ok.problem:SetWidth(500)
-        ok.icon:Hide(); ok.item:SetText(""); ok.mode:Hide(); ok.have:SetText("")
-        ok._tip = nil
-        ok:Show()
-        y = PREP_ROW_H
+    local y, nHead, nRow = 0, 0, 0
+    -- column labels over the rows
+    if not prepHeads.cols then
+        local function label(point, x, text)
+            local fs = sc:CreateFontString(nil, "OVERLAY")
+            VoidUI:SetFont(fs, 9, "")
+            fs:SetTextColor(0.55, 0.55, 0.62)
+            fs:SetPoint(point, x, 0)
+            fs:SetText(text)
+            return fs
+        end
+        prepHeads.cols = { label("TOPLEFT", PREP_COLS.now, "You have"), label("TOPLEFT", PREP_COLS.icon, "Get"),
+            label("TOPRIGHT", -(PREP_COLS.haveW + 12), "This item"), label("TOPRIGHT", -6, "In bags") }
     end
-    for i, r in ipairs(res.rows) do
-        local row = AcquirePrepRow(sc, i)
+    for _, fs in ipairs(prepHeads.cols) do fs:Show() end
+    y = 14
+
+    local function head(text)
+        if nHead > 0 then y = y + 8 end
+        nHead = nHead + 1
+        local fs = prepHeads[nHead]
+        if not fs then
+            fs = sc:CreateFontString(nil, "OVERLAY")
+            VoidUI:SetFont(fs, 11, "OUTLINE")
+            fs:SetTextColor(0, 0.78, 1)
+            fs:SetJustifyH("LEFT")
+            prepHeads[nHead] = fs
+        end
+        fs:ClearAllPoints()
+        fs:SetPoint("TOPLEFT", PREP_COLS.slot, -y)
+        fs:SetText(text)
+        fs:Show()
+        y = y + 18
+    end
+    local function nextRow()
+        nRow = nRow + 1
+        local row = AcquirePrepRow(sc, nRow)
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", 0, -y)
         row:SetPoint("RIGHT", 0, 0)
+        row.now:SetWidth(PREP_COLS.nowW)
+        row.icon:Show()
+        row.mode:Hide()   -- gear rows show it; consumables follow the switch at the top
+        row:Show()
+        y = y + PREP_ROW_H
+        return row
+    end
+    local function countText(n) return n > 0 and ("|cff66ff66%d|r"):format(n) or "|cff8888880|r" end
+
+    local function gearRow(r)
+        local row = nextRow()
         local slotName = VoidGear.SLOTS[r.slot] or "?"
         if r.kind == "gem" then slotName = slotName .. " gem" end
         row.slot:SetText(slotName)
-        row.problem:SetText((SEVERITY_COLOR[r.severity] or "") .. r.problem .. "|r")
+        row.now:SetText((SEVERITY_COLOR[r.severity] or "") .. (r.now or r.problem) .. "|r")
         local name = r.buy and C_Item.GetItemNameByID(r.buy)
         if r.buy and not name then C_Item.RequestLoadItemDataByID(r.buy); WaitForItems() end
-        row.problem:SetWidth(PREP_COLS.problemW)
-        row.icon:Show()
-        row.item:SetText((name or r.topName or "?") .. " " .. QualityIcon(r.buy, r.buyGroup))
+        row.item:SetText((Prep:ShortName(name or r.topName) or "?") .. " " .. QualityIcon(r.buy, r.buyGroup))
         row.icon._itemID = r.buy
         row.icon.tex:SetTexture(r.buy and C_Item.GetItemIconByID(r.buy) or 134400)
+        row.have:SetText(r.buy and countText(C_Item.GetItemCount(r.buy, true) or 0) or "")
         row.mode._slot, row.mode._mode, row.mode._why = r.slot, r.mode, r.modeWhy
         row.mode._text:SetText(r.mode == "budget" and "Budget" or "Best")
-        local have = r.buy and C_Item.GetItemCount(r.buy, true) or 0
-        row.have:SetText(not r.buy and "" or have > 0 and ("|cff66ff66have %d|r"):format(have) or "|cff888888have 0|r")
         row.mode:SetShown(r.buy ~= nil)   -- nothing to buy (e.g. a runeforge): no Best/Budget
         row._tipTitle = r.problem
-        row._tip = (r.haveName and ("Now: " .. r.haveName .. "\n") or "")
-            .. ("Top players: %s (%d%%)"):format(r.topName or "?", math.floor((r.share or 1) * 100 + 0.5))
-        row:Show()
-        y = y + PREP_ROW_H
+        local tip = {}
+        if r.haveName then tip[#tip + 1] = "You have: " .. r.haveName end
+        tip[#tip + 1] = ("Top players: %s (%d%% of them)"):format(r.topName or "?", math.floor((r.share or 1) * 100 + 0.5))
+        if r.note then tip[#tip + 1] = r.note end
+        if r.buy then
+            tip[#tip + 1] = (r.mode == "budget" and "Buying the cheaper quality" or "Buying the best quality")
+                .. (r.modeWhy and (": " .. r.modeWhy) or ".")
+        end
+        row._tip = table.concat(tip, "\n")
+    end
+
+    local must, optional = {}, {}
+    for _, r in ipairs(res.rows) do
+        if r.severity == "need" then must[#must + 1] = r else optional[#optional + 1] = r end
+    end
+    if #res.rows == 0 then
+        head("Enchants and gems")
+        local row = nextRow()
+        row.slot:SetText("Gear")
+        row.now:SetText("|cff66ff66Every enchant and gem matches what the top players use.|r")
+        row.now:SetWidth(500)
+        row.icon:Hide(); row.item:SetText(""); row.have:SetText("")
+        row._tip = nil
+    end
+    if #must > 0 then
+        head("Must fix")
+        for _, r in ipairs(must) do gearRow(r) end
+    end
+    if #optional > 0 then
+        head("Optional upgrades |cff888888- yours works; top players use these (not on the shopping list)|r")
+        for _, r in ipairs(optional) do gearRow(r) end
     end
 
     -- Consumables: one line per job, the best one for your spec
     if #res.consumables > 0 then
-        y = y + 6
-        local nRows = #res.rows > 0 and #res.rows or 1
-        for k, c in ipairs(res.consumables) do
-            local row = AcquirePrepRow(sc, nRows + k)
-            row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", 0, -y)
-            row:SetPoint("RIGHT", 0, 0)
+        head("Consumables")
+        for _, c in ipairs(res.consumables) do
+            local row = nextRow()
             row.slot:SetText(c.label)
-            row.problem:SetWidth(PREP_COLS.problemW)
             local otherName = c.other and C_Item.GetItemNameByID(c.other.group[1])
-            row.problem:SetText(c.have > 0 and "|cff66ff66In your bags|r"
-                or c.other and ("|cffffd200You have %s (%d)|r"):format(otherName or "another", c.other.count)
-                or "|cffff5555None in your bags|r")
+            row.now:SetText(c.have > 0 and "|cff66ff66This one|r"
+                or c.other and ("|cffffd200%s (%d)|r"):format(otherName or "Another one", c.other.count)
+                or "|cffff5555None|r")
             local name = C_Item.GetItemNameByID(c.buy)
             if not name then C_Item.RequestLoadItemDataByID(c.buy); WaitForItems() end
-            row.icon:Show()
             row.icon._itemID = c.buy
             row.icon.tex:SetTexture(C_Item.GetItemIconByID(c.buy) or 134400)
             row.item:SetText((name or "?") .. " " .. QualityIcon(c.buy, c.buyGroup))
-            row.mode:Hide()   -- follows the Best / Budget switch above
-            row.have:SetText(c.have > 0 and ("|cff66ff66have %d|r"):format(c.have) or "|cff888888have 0|r")
+            row.have:SetText(countText(c.have))
             row._tipTitle = c.label
             row._tip = "Best for your spec's stat priority, read from each item's tooltip. Top-player data doesn't include consumables."
             if c.other then
-                row._tip = row._tip .. ("\n\nYou already carry %s, so it's not on the shopping list."):format(otherName or "another one")
+                row._tip = row._tip .. ("\n\nYou carry %s, which does the job, so it's not on the shopping list."):format(otherName or "another one")
             end
             if c.risky then
                 row._tip = row._tip .. ("\n\nStronger, but with a catch: %s (see its tooltip)."):format(
                     C_Item.GetItemNameByID(c.risky.group[1]) or "?")
             end
-            row:Show()
-            y = y + PREP_ROW_H
         end
     end
 
     -- Shopping list
     if #res.shop > 0 then
-        y = y + 10
-        local head = prepShop.head
-        if not head then
-            head = sc:CreateFontString(nil, "OVERLAY")
-            VoidUI:SetFont(head, 11, "OUTLINE")
-            head:SetTextColor(0, 0.78, 1)
-            prepShop.head = head
-        end
-        head:ClearAllPoints()
-        head:SetPoint("TOPLEFT", PREP_COLS.slot, -y)
-        head:SetText(("Shopping list (%s)"):format(mode == "budget" and "Budget" or "Best"))
-        head:Show()
-        y = y + 20
+        head(("Shopping list |cff888888- %s|r"):format(mode == "budget" and "cheaper quality" or "best quality"))
         for i, e in ipairs(res.shop) do
             local line = AcquireShopLine(sc, i)
             line:ClearAllPoints()
@@ -1565,8 +1607,10 @@ local function RefreshPrepTab()
                 line.text:SetText(("%s %s   |cff888888none in your bags|r"):format(name, QualityIcon(e.id, nil)))
             else
                 local need = math.max(e.count - e.have, 0)
-                line.text:SetText(("%dx %s %s   %s"):format(e.count, name, QualityIcon(e.id, VoidGear.PrepData.sameName[e.id]),
-                    need == 0 and "|cff66ff66(have them)|r" or ("|cff888888have %d, buy %d|r"):format(e.have, need)))
+                line.text:SetText(("%s %s   %s"):format(Prep:ShortName(name), QualityIcon(e.id, VoidGear.PrepData.sameName[e.id]),
+                    need == 0 and "|cff66ff66you have enough|r"
+                    or e.have > 0 and ("|cff888888have %d, buy %d|r"):format(e.have, need)
+                    or ("|cff888888buy %d|r"):format(need)))
             end
             line.icon._itemID = e.id
             line.icon.tex:SetTexture(C_Item.GetItemIconByID(e.id) or 134400)
