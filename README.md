@@ -64,6 +64,7 @@ VoidGear compares your gear with the top Mythic+ players of your spec, then tell
 
 ## Good to Know
 
+- **Settings are per character.** Each character keeps its own VoidGear settings, and a new character starts with the settings of the one you played last, so nothing resets when you update. Right-click the Void hub icon by your minimap and pick **Copy settings from...** to take another character's settings for one Void addon or all of them.
 - **You still click to enchant and socket.** VoidGear tells you what to use and helps you buy it; the game requires you to apply it yourself.
 - **Crest costs are exact after you open the upgrade NPC once.** Before that, VoidGear assumes the same cost for every step and says so in the tooltip.
 - **Made for English game clients.** Consumables are recognized by their English tooltips.

@@ -3,6 +3,9 @@ local GetDetailedItemLevelInfo = (C_Item and C_Item.GetDetailedItemLevelInfo) or
 -- VoidSpy hook: enable with /vspy enable VoidGear  (no-op if VoidSpy missing/disabled)
 local function dbg(fmt, ...) if VoidSpy and VoidSpy.Log then VoidSpy:Log("VoidGear", fmt, ...) end end
 
+-- Settings are per character (CharSettings.lua); the loot cache stays account-wide.
+select(2, ...).CharSettings.Register("VoidGear", "VoidGearDB", { "upgradeBadges" })
+
 ----------------------------------------------------------------------
 -- VoidGear Core — slash command, init.
 ----------------------------------------------------------------------
