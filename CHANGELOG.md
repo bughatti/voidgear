@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.2] — 2026-11-03
+
+### Fixed
+- **Another character's trinkets could be listed to disenchant.** Seen from a character of another class, VoidGear wrongly decided a trinket with Agility, Intellect and Strength couldn't be used by its owner, so it skipped every keep check. It now reads all three stats, and when it can't tell whether a character can use a piece, or can't compare item levels (an off-hand for someone holding a two-hander), the piece goes to **Check: you decide**, never Disenchant.
+
 ## [1.1.1] — 2026-11-03
 
 ### Added

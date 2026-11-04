@@ -235,14 +235,16 @@ local function canWear(rec, info, link)
     end
     -- class-only items (tier): asked for THAT character's class and spec
     -- (GetItemSpecInfo answers for the class you're logged in on: Astra, 2026-11-03)
+    -- Only trusted for your own class: asked from a Death Knight, it said no druid
+    -- spec could use a druid's trinket, which then went to Disenchant (2026-11-03).
     local classID = classIDOf(rec.class)
-    if rec.specID and classID and C_Item.DoesItemContainSpec then
+    if rec.specID and classID and C_Item.DoesItemContainSpec and rec.class == select(2, UnitClass("player")) then
         local ok, fits = pcall(C_Item.DoesItemContainSpec, link, classID, rec.specID)
         if ok and fits == false then return false end
     end
     -- an item with a main stat must have this spec's
     local s = stats(link)
-    if not s then return false end
+    if not s then return nil end   -- not loaded: unknown, not "can't wear"
     local hasPrimary, matches = false, false
     for k in pairs(s) do
         if PRIMARY_KEY[k] then
@@ -253,7 +255,24 @@ local function canWear(rec, info, link)
             if MULTI_KEY[k][rec.primary] then matches = true end
         end
     end
-    return matches or not hasPrimary
+    if matches or not hasPrimary then return true end
+    -- An item with all three main stats reports only YOUR class's one (a druid's
+    -- Agi/Int/Str trinket read "Strength" on a Death Knight and went to Disenchant,
+    -- 2026-11-03). For another class, the tooltip lists all three (the inactive
+    -- ones greyed): look for this character's stat there, in the game's own words.
+    if rec.class ~= select(2, UnitClass("player")) then
+        local word = ({ Strength = SPELL_STAT1_NAME, Agility = SPELL_STAT2_NAME, Intellect = SPELL_STAT4_NAME })[rec.primary]
+        local tip = C_TooltipInfo and C_TooltipInfo.GetHyperlink and C_TooltipInfo.GetHyperlink(link)
+        if not (word and tip and tip.lines and #tip.lines > 1) then return nil end   -- can't tell
+        for _, line in ipairs(tip.lines) do
+            local t = line.leftText
+            if type(t) == "string" and not (issecretvalue and issecretvalue(t))
+                and t:find("^%+[%d,%.]+ " .. word) then
+                return true
+            end
+        end
+    end
+    return false
 end
 
 local scoreMemo
@@ -654,6 +673,7 @@ function SP:Judge()
                     -- scoring it with an off-spec's weights made everything look
                     -- like +500% (2026-11-03): off-specs compare item levels instead.
                     local bestSpec, offKey, offSpec, offIlvl, offWorn
+                    local noIlvl   -- a character that can wear it, but the item-level test couldn't run
                     local weapon = SLOT_OF[equipLoc] == 16 or SLOT_OF[equipLoc] == 17
                     -- Trinkets: item levels, for every character. Their worth is mostly
                     -- the effect, which is only scored on the character itself, so the
@@ -664,7 +684,9 @@ function SP:Judge()
                     for _, key in ipairs(who) do
                         local rec, worn = roster[key], false
                         for _, srec in ipairs(specsOf(rec)) do
-                            if canWear(srec, info, it.link) then
+                            local cw = canWear(srec, info, it.link)
+                            if cw == nil then noIlvl = noIlvl or key end   -- can't tell: never Disenchant
+                            if cw then
                                 if not worn then wearers[#wearers + 1] = key; worn = true end
                                 if not trinket and (srec == rec or (srec.primary == rec.primary and not weapon)) and wornMatches(rec, info) then   -- same main stat (Unholy vs Frost): stats compare; another spec's weapon setup is not what is worn
                                     local cand, cur = score(srec, it.link), current(srec, info, it.link)
@@ -683,6 +705,7 @@ function SP:Judge()
                                 -- (the trinkets, 2026-11-03: "we have to be really careful
                                 -- ... your algos being wrong").
                                 local w = wornIlvl(rec, info, it.link, srec ~= rec)
+                                if not w then noIlvl = noIlvl or key end
                                 if w and myIlvl >= w and (not offIlvl or myIlvl - w > offIlvl - offWorn) then
                                     offKey, offSpec, offIlvl, offWorn = key, srec.spec, myIlvl, w
                                 end
@@ -709,12 +732,6 @@ function SP:Judge()
                         e.verdict, e.who = "keep", offKey
                         e.why = ("for %s (%s): item level %d vs %d worn"):format(shortName(offKey), offSpec or "?",
                             offIlvl, offWorn)
-                    elseif trinket and #wearers > 0 then
-                        -- below what's worn, but a trinket's effect isn't scored: a
-                        -- weaker-looking one can still be the better one. Never on the
-                        -- disenchant list; you decide (Codex Sol, 2026-11-03).
-                        e.verdict, e.who = "check", it.owner
-                        e.why = "trinket below what's worn: its effect isn't scored, so you decide (right-click to always keep)"
                     elseif catalystFor(it, info, roster[me]) then
                         local what, mine = catalystFor(it, info, roster[me])
                         e.verdict, e.who = "keep", me
@@ -740,7 +757,21 @@ function SP:Judge()
                         res.unknown[s] = true
                         e.why = s == it.owner and ("log in on %s once to check it against its gear"):format(shortName(s))
                             or ("could suit %s: log in on %s once to check"):format(shortName(s), shortName(s))
+                    elseif noIlvl then
+                        -- one of the two tests couldn't run (an off-hand for a character
+                        -- holding a two-hander, 2026-11-03): never Disenchant on one test alone
+                        e.verdict, e.who = "check", it.owner
+                        e.why = ("can't compare it with what %s wears: you decide (right-click to always keep)"):format(shortName(noIlvl))
+                    elseif trinket and #wearers > 0 then
+                        -- below what's worn, but a trinket's effect isn't scored: a
+                        -- weaker-looking one can still be the better one. Never on the
+                        -- disenchant list; you decide (Codex Sol, 2026-11-03).
+                        e.verdict, e.who = "check", it.owner
+                        e.why = "trinket below what's worn: its effect isn't scored, so you decide (right-click to always keep)"
                     else
+                        -- why it got this far (read with /run, for checking verdicts)
+                        e.dbg = ("who=%d wearers=%d trinket=%s noIlvl=%s off=%s ratio=%s"):format(#who, #wearers,
+                            tostring(trinket), tostring(noIlvl), tostring(offKey), tostring(bestRatio))
                         local deValue = (price(DE_MAT[quality]) or 0)
                         local ahPrice = sellable and VoidAH_Price and VoidAH_Price(it.id)
                         local deBy
