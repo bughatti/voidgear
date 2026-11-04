@@ -26,6 +26,13 @@ VoidGear compares your gear with the top Mythic+ players of your spec, then tell
 - **Stat priority** for every spec, with a dropdown to pick another, and "Show all items" when you want the full list
 - Reads the loot straight from the Adventure Guide (**Scan Loot**, once per season and spec), so it's always this season's loot for your class
 
+### Spares: keep, sell or disenchant
+- **Every spare piece of gear** in your characters' bags, their banks and the warband bank (with VoidBags), judged against **all your characters**, not just the one you're on
+- **Keep** what's an upgrade, or close to one, for any of them ("+4.2% for Vede (Unholy)"), and pieces whose look you haven't collected
+- **Sell** unbound BoE gear that's worth more on the AH than disenchanted (prices from VoidAH)
+- **Disenchant** the rest, with which of your enchanters does it and what it gives; **vendor** older-expansion gear
+- Soulbound gear only counts for its owner; warbound gear and the warband bank's count for everyone
+
 ### Crests
 - **Where your crests should go next**: a small badge on each upgradeable item on the Character window ranks your next upgrade per crest type by stat gain per crest spent
 - It knows when to stop at 4/6 and start another item. Visit the upgrade NPC once and it reads the exact costs, discounts included

@@ -33,6 +33,20 @@ SlashCmdList["VOIDGEAR"] = function(msg)
         VoidGear.UpgradeAdvisor:Report()
     elseif msg == "catalyst" or msg == "cat" then
         VoidGear.UpgradeAdvisor:CatalystReport()
+    elseif msg == "spares" then
+        -- the Spares verdicts into SavedVariables (VoidGearDB.sparesDump), to read
+        -- off disk after a /reload -- not chat (debugging: saved file, not chat dumps)
+        local res = VoidGear.Spares:Judge()
+        local dump = {}
+        for _, kind in ipairs({ "keep", "check", "sell", "de", "vendor", "wait" }) do
+            for _, e in ipairs(res[kind]) do
+                dump[#dump + 1] = ("%s | %s | %s | %s%s | %s"):format(kind, e.link:match("%[(.-)%]") or "?",
+                    tostring(e.ilvl or ""), e.owner == "warband" and "warband bank" or tostring(e.owner),
+                    e.bank and " bank" or "", e.why or "")
+            end
+        end
+        VoidGearDB.sparesDump = dump
+        VoidGear:Print(("Spares: %d lines saved; /reload to write them to disk."):format(#dump))
     elseif msg == "upgrades scan" then
         local n = VoidGear.UpgradeAdvisor:ScanAtNPC()
         VoidGear:Print(n and ("Read upgrade costs for %d items."):format(n)
@@ -281,6 +295,8 @@ f:SetScript("OnEvent", function()
     if VoidGear.Scorer and VoidGear.Scorer.Init then
         VoidGear.Scorer:Init()
     end
+    -- this character into the roster the Spares tab judges gear against
+    if VoidGear.Roster then VoidGear.Roster:Init() end
 
     VoidGear:Print("Loaded v" .. VoidGear.version .. " - type |cffffd200/vgear|r to open.")
 end)

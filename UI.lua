@@ -2,7 +2,7 @@
 local GetDetailedItemLevelInfo = (C_Item and C_Item.GetDetailedItemLevelInfo) or GetDetailedItemLevelInfo
 ----------------------------------------------------------------------
 -- VoidGear UI — main panel with tabs for different gear-source views.
--- Tabs: Top | Prep | Vault | Raid | M+ | World
+-- Tabs: Top | Prep | Vault | Raid | M+ | World | Spares
 -- All tabs use the active stat-priority preset for scoring/comparison.
 ----------------------------------------------------------------------
 
@@ -336,7 +336,8 @@ end
 
 -- Fury's Titan's Grip (spell 46917): two two-handers at once.
 local function TitansGrip()
-    return IsPlayerSpell and IsPlayerSpell(46917) or false
+    local known = (C_SpellBook and C_SpellBook.IsSpellKnown) or IsPlayerSpell   -- the global is deprecated in 12.x
+    return known and known(46917) or false
 end
 
 local function IsHandWeapon(idOrLink)
@@ -1736,6 +1737,7 @@ local function BuildPanel()
         { key = "raid",  label = "Raid" },
         { key = "mplus", label = "M+" },
         { key = "world", label = "World" },
+        { key = "spares", label = "Spares" },   -- keep / sell / disenchant your spare gear (SparesUI.lua)
     }
     local prev = nil
     for _, def in ipairs(tabDefs) do
@@ -1789,6 +1791,8 @@ local function BuildPanel()
             BuildVaultTab(f)
         elseif def.key == "prep" then
             BuildPrepTab(f)
+        elseif def.key == "spares" then
+            VoidGear.SparesUI:Build(f)
         else
             CreateScrollArea(f)
         end
@@ -1832,6 +1836,11 @@ function UI:Refresh()
     end
 
     local mode = (VoidGearCharDB and VoidGearCharDB.showAll) and "all" or "upgrades"
+    if activeTab == "spares" then
+        -- items from other characters may still be loading: redraw when they arrive
+        if VoidGear.SparesUI:Refresh() then WaitForItems() end
+        return
+    end
     -- spec changed since the last scan: the loot list is per spec, so rescan
     if activeTab ~= "prep" and activeTab ~= "top" and not specRescan and VoidGear.LootDB:NeedsSpecRescan() then
         specRescan = true
@@ -1889,7 +1898,7 @@ liveEvents:SetScript("OnEvent", function(_, event)
     if liveQueued or not (panel and panel:IsShown()) then return end
     -- bags only matter to Prep (what you carry); elsewhere a redraw while
     -- looting would just reset the scroll
-    if event == "BAG_UPDATE_DELAYED" and activeTab ~= "prep" then return end
+    if event == "BAG_UPDATE_DELAYED" and activeTab ~= "prep" and activeTab ~= "spares" then return end
     liveQueued = true
     C_Timer.After(0.5, function()
         liveQueued = false

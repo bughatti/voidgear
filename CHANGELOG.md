@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0] — 2026-11-03
+
+### Added
+- **Spares tab: keep, sell, disenchant or vendor.** Every spare piece of gear in your characters' bags, their banks and the warband bank (with VoidBags), judged against all your characters, not just the one you're on. Keep: an upgrade or within 3% of what one of them wears ("+4.2% for Vede (Unholy)"), or a look you haven't collected. Sell: unbound BoE worth more on the AH than disenchanted (with VoidAH). Disenchant: which of your enchanters does it, and whether to send it there or take it from the warband bank, with what it gives. Vendor: older-expansion gear and soulbound pieces on a character without Enchanting. Catalyst: a piece in your bags the Catalyst would turn into a tier upgrade is kept ("Catalyst it: your tier gloves at 292, you wear 272"). Each character joins the check the first time you log in on it; until then anything that might suit it is listed under "Check after logging in", never Disenchant.
+
+### Fixed
+- **Gems for new gear in VoidAH:** right after you put on a new item, its gem could be missing from the VoidGear suggestions in VoidAH until you reopened the Auction House. VoidGear now tells VoidAH when your gear is still loading.
+
 ## [1.0.7] — 2026-11-02
 
 ### Changed

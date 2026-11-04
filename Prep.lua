@@ -487,10 +487,14 @@ function Prep:Consumables()
     return out, pending
 end
 
--- For other addons (VoidAH's shopping list): { { id, count, have }, ... } or nil.
+-- For other addons (VoidAH's shopping list): { { id, count, have }, ... } or nil,
+-- and pending = true while some of it is still loading. A just-equipped item can
+-- report 0 sockets until its details arrive, so its gem was missing from a list
+-- VoidAH kept for the whole visit (2026-11-03). Ask again until pending is false.
 function Prep:GetShoppingList()
+    local gearPending = VoidGear.Scanner and VoidGear.Scanner.AnyPending and VoidGear.Scanner:AnyPending()
     local r = self:Compute()
-    return r and r.shop
+    return r and r.shop, (gearPending or (r and r.pending)) and true or false
 end
 
 ----------------------------------------------------------------------
