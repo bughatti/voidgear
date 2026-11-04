@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.3] — 2026-11-03
+
+### Fixed
+- **Spares judged the same piece differently depending on the character you were on.** Leather, mail and plate pieces (and many trinkets) carry two or three main stats, and the game only reports the one for the class you're logged in as. VoidGear now reads every main stat from the item itself and scores each of your characters with its own, so the Keep / Disenchant list is the same from every character.
+
 ## [1.1.2] — 2026-11-03
 
 ### Fixed

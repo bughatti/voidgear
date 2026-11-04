@@ -213,6 +213,55 @@ local function stats(link)
     return s
 end
 
+-- An item's main stats, as the tooltip lists them: { Agility = 114, Intellect = 114 }.
+-- Not from C_Item.GetItemStats: on an item with two or three main stats (leather,
+-- mail and plate pieces, many trinkets) it reports only the logged-in class's one,
+-- so the same piece scored differently on every character (2026-11-03). The tooltip
+-- lists them all (the inactive ones greyed). {} = none; nil = tooltip not loaded yet.
+local primCache = {}
+local STAT_WORD
+local function primariesOf(link)
+    if not link then return nil end
+    if primCache[link] then return primCache[link] end
+    if not STAT_WORD then
+        STAT_WORD = {}
+        if SPELL_STAT1_NAME then STAT_WORD[SPELL_STAT1_NAME] = "Strength" end
+        if SPELL_STAT2_NAME then STAT_WORD[SPELL_STAT2_NAME] = "Agility" end
+        if SPELL_STAT4_NAME then STAT_WORD[SPELL_STAT4_NAME] = "Intellect" end
+    end
+    local tip = C_TooltipInfo and C_TooltipInfo.GetHyperlink and C_TooltipInfo.GetHyperlink(link)
+    if not (tip and tip.lines and #tip.lines > 1) then
+        pending, itemPending = true, true
+        return nil
+    end
+    local out = {}
+    for _, line in ipairs(tip.lines) do
+        local t = line.leftText
+        if type(t) == "string" and not (issecretvalue and issecretvalue(t)) then
+            local n, word = t:match("^%+([%d,%.]+) (.+)$")
+            local stat = word and STAT_WORD[word]
+            if stat then out[stat] = tonumber((n:gsub("[,%.]", ""))) or 0 end
+        end
+    end
+    primCache[link] = out
+    return out
+end
+-- GetItemStats with the main stat set to `primary` when the item offers it (and
+-- dropped when it doesn't): what this item gives THAT character.
+local MAIN_KEY = { Strength = "ITEM_MOD_STRENGTH_SHORT", Agility = "ITEM_MOD_AGILITY_SHORT",
+    Intellect = "ITEM_MOD_INTELLECT_SHORT" }
+local function statsAs(link, primary)
+    local raw = C_Item.GetItemStats(link)
+    local prim = primariesOf(link)
+    if not (raw and prim) then return nil end
+    local s = {}
+    for k, v in pairs(raw) do
+        if not (PRIMARY_KEY[k] or MULTI_KEY[k]) then s[k] = v end
+    end
+    if primary and prim[primary] and MAIN_KEY[primary] then s[MAIN_KEY[primary]] = prim[primary] end
+    return s, raw
+end
+
 local classIDs   -- "DRUID" -> 11
 local function classIDOf(file)
     if not classIDs then
@@ -242,37 +291,14 @@ local function canWear(rec, info, link)
         local ok, fits = pcall(C_Item.DoesItemContainSpec, link, classID, rec.specID)
         if ok and fits == false then return false end
     end
-    -- an item with a main stat must have this spec's
-    local s = stats(link)
-    if not s then return nil end   -- not loaded: unknown, not "can't wear"
-    local hasPrimary, matches = false, false
-    for k in pairs(s) do
-        if PRIMARY_KEY[k] then
-            hasPrimary = true
-            if PRIMARY_KEY[k] == rec.primary then matches = true end
-        elseif MULTI_KEY[k] then
-            hasPrimary = true
-            if MULTI_KEY[k][rec.primary] then matches = true end
-        end
-    end
-    if matches or not hasPrimary then return true end
-    -- An item with all three main stats reports only YOUR class's one (a druid's
-    -- Agi/Int/Str trinket read "Strength" on a Death Knight and went to Disenchant,
-    -- 2026-11-03). For another class, the tooltip lists all three (the inactive
-    -- ones greyed): look for this character's stat there, in the game's own words.
-    if rec.class ~= select(2, UnitClass("player")) then
-        local word = ({ Strength = SPELL_STAT1_NAME, Agility = SPELL_STAT2_NAME, Intellect = SPELL_STAT4_NAME })[rec.primary]
-        local tip = C_TooltipInfo and C_TooltipInfo.GetHyperlink and C_TooltipInfo.GetHyperlink(link)
-        if not (word and tip and tip.lines and #tip.lines > 1) then return nil end   -- can't tell
-        for _, line in ipairs(tip.lines) do
-            local t = line.leftText
-            if type(t) == "string" and not (issecretvalue and issecretvalue(t))
-                and t:find("^%+[%d,%.]+ " .. word) then
-                return true
-            end
-        end
-    end
-    return false
+    -- an item with a main stat must have this spec's. From the tooltip, which
+    -- lists every main stat it has (a druid's Agi/Int/Str trinket read only
+    -- "Strength" through GetItemStats on a Death Knight and went to Disenchant).
+    if not stats(link) then return nil end   -- not loaded: unknown, not "can't wear"
+    local prim = primariesOf(link)
+    if not prim then return nil end
+    if not next(prim) then return true end   -- no main stat (rings, necks): anyone
+    return prim[rec.primary] ~= nil
 end
 
 local scoreMemo
@@ -282,7 +308,17 @@ local function score(rec, link)
     local m = scoreMemo[rec]
     if m[link] == nil then
         if not stats(link) then return nil end
-        m[link] = VoidGear.Scorer:ScoreLink(link, rec.weights, rec.primary) or 0
+        local Sc = VoidGear.Scorer
+        local total = Sc:ScoreLink(link, rec.weights, rec.primary) or 0
+        -- swap the stat part for THIS character's main stat (statsAs): the
+        -- game's own reading follows the class you're logged in on
+        local fixed, raw = statsAs(link, rec.primary)
+        if not fixed then return nil end
+        if Sc.ScoreStats then
+            total = total - (Sc:ScoreStats(raw, rec.weights, rec.primary) or 0)
+                + (Sc:ScoreStats(fixed, rec.weights, rec.primary) or 0)
+        end
+        m[link] = total
     end
     return m[link]
 end
@@ -345,13 +381,9 @@ end
 local function wornMatches(rec, info)
     local s = SLOT_OF[info.equipLoc]
     local worn = rec.gear and rec.gear[s]
-    local st = worn and C_Item.GetItemStats(worn)
-    if not st then return true end
-    for k in pairs(st) do
-        if PRIMARY_KEY[k] then return PRIMARY_KEY[k] == rec.primary end
-        if MULTI_KEY[k] then return MULTI_KEY[k][rec.primary] or false end
-    end
-    return true
+    local prim = worn and primariesOf(worn)   -- all its main stats, whoever is looking
+    if not (prim and next(prim)) then return true end
+    return prim[rec.primary] ~= nil
 end
 
 -- Same unique-equipped group (only one of them can be worn), as a comparable key.
