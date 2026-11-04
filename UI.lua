@@ -40,10 +40,9 @@ end
 ----------------------------------------------------------------------
 -- Helper: themed button
 ----------------------------------------------------------------------
-local function MakeButton(parent, w, h, label, onClick)
+local function StyleButton(btn, w, h, label)
     local P = VoidUI.palette
     local aR, aG, aB = P.accent[1], P.accent[2], P.accent[3]
-    local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
     btn:SetSize(w, h)
     btn:SetBackdrop({
         bgFile   = "Interface\\Buttons\\WHITE8X8",
@@ -65,6 +64,12 @@ local function MakeButton(parent, w, h, label, onClick)
         self:SetBackdropColor(0.10, 0.12, 0.15, 1)
         self:SetBackdropBorderColor(aR, aG, aB, 0.6)
     end)
+    return btn
+end
+VoidGear.StyleButton = StyleButton   -- SparesUI's buttons (one of them secure, so made elsewhere)
+
+local function MakeButton(parent, w, h, label, onClick)
+    local btn = StyleButton(CreateFrame("Button", nil, parent, "BackdropTemplate"), w, h, label)
     if onClick then btn:SetScript("OnClick", onClick) end
     return btn
 end

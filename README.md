@@ -31,6 +31,7 @@ VoidGear compares your gear with the top Mythic+ players of your spec, then tell
 - **Keep** what's an upgrade, or close to one, for any of them ("+4.2% for Vede (Unholy)"), and pieces whose look you haven't collected
 - **Sell** unbound BoE gear that's worth more on the AH than disenchanted (prices from VoidAH)
 - **Disenchant** the rest, with which of your enchanters does it and what it gives; **vendor** older-expansion gear
+- **No hunting through your bags:** on your enchanter, **Disenchant next** disenchants the next piece on the list with each click, and **Take from bank** pulls the pile out of your bank and the warband bank. On your other characters, **Put in warband bank** deposits what your enchanter should disenchant
 - Soulbound gear only counts for its owner; warbound gear and the warband bank's count for everyone
 
 ### Crests

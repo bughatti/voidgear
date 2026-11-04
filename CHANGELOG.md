@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.1] — 2026-11-03
+
+### Added
+- **Spares tab buttons, so you don't have to find each piece in your bags.** On a character with Enchanting, **Disenchant next** disenchants the next piece on its list with each click (hover it to see which; the game needs one click per disenchant), and **Take from bank** moves its pile from its bank and the warband bank into its bags while the bank is open. On your other characters, **Put in warband bank for ...** deposits the pieces your enchanter should disenchant.
+
+### Safer disenchanting
+- **Never touched:** every profession item, primary or secondary (anything with a profession stat, a profession named in its tooltip such as Fishing or Cooking, or no combat stats at all), items you protected in VoidBags (middle-click in your bags), items in one of your equipment sets, and anything you **right-click** in the Spares tab ("always keep"; right-click again to undo).
+- **Two tests before "disenchant":** a piece has to lose on its stats **and** be below the item level that every character who can wear it already has on. If either test says it's as good, it's kept.
+- **The button names the next piece** ("Disenchant: Fiber of Living Agony (3)") and checks it again at the moment you click.
+
+### Fixed
+- **Spares gave different answers on different characters.** Trinkets are now judged by item level for every character (their effects can only be scored on the character itself), and one below what is worn goes to **Check: you decide**, never Disenchant. So a trinket no longer reads "keep" on its owner and "disenchant" on your other characters. And a character with Enchanting disenchants the pieces it holds itself: a piece in your enchanter's bags no longer says "send it to" whichever enchanter you're on.
+
 ## [1.1.0] — 2026-11-03
 
 ### Added

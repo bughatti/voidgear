@@ -162,6 +162,7 @@ local function collect()
                 if #out > before then   -- no link yet: nothing was added
                     out[#out].loc = loc   -- for the Catalyst check (this character only)
                     out[#out].wb = warbandOK(loc)
+                    out[#out].bag, out[#out].slot = bag, slot   -- for the Disenchant / deposit buttons
                 end
             end
         end
@@ -431,7 +432,106 @@ end
 -- { keep = {...}, sell = {...}, de = {...}, vendor = {...}, wait = {...},
 --   deByWho = { [key] = n }, deMats = { [quality] = n }, pending = bool, unknown = { [key] = true } }
 -- Each entry: { link, owner, verdict, why, quality, who }
+-- Pieces never to sell, disenchant or vendor, whatever the scores say (the
+-- user, 2026-11-03: "it could disenchant something somebody did not want
+-- disenchanted"): marked keep here (right-click a Spares row), protected in
+-- VoidBags (middle-click in bags), or in one of this character's equipment sets.
+-- By item ID: every copy of it is kept. nil = not protected.
+local function equipmentSetItems()
+    local out = {}
+    local ES = C_EquipmentSet
+    if not (ES and ES.GetEquipmentSetIDs and ES.GetItemIDs) then return out end
+    for _, setID in ipairs(ES.GetEquipmentSetIDs() or {}) do
+        for _, id in pairs(ES.GetItemIDs(setID) or {}) do
+            if type(id) == "number" and id > 0 then out[id] = true end
+        end
+    end
+    return out
+end
+local function protectedWhy(id, setItems)
+    if not id then return nil end
+    if VoidGearDB and VoidGearDB.neverDE and VoidGearDB.neverDE[id] then
+        return "you marked it keep (right-click to undo)"
+    end
+    local vb = type(_G.VoidBagsDB) == "table" and _G.VoidBagsDB.protected
+    if type(vb) == "table" and vb[id] then return "protected in VoidBags" end
+    if setItems and setItems[id] then return "in one of your equipment sets" end
+    return nil
+end
+SP.ProtectedWhy = function(id) return protectedWhy(id, equipmentSetItems()) end
+
+-- Only weapons and armor in a combat slot with a combat stat get judged.
+-- Anything else (profession equipment, a fishing hat, a toy-like trinket) is
+-- kept: its value isn't something VoidGear can score. Stats still loading = kept.
+local COMBAT_STAT = { "STRENGTH", "AGILITY", "INTELLECT", "STAMINA", "CRIT", "HASTE", "MASTERY", "VERSATILITY" }
+-- a profession stat anywhere = profession gear, even with Stamina on it
+local PROF_STAT = { "PERCEPTION", "DEFTNESS", "FINESSE", "MULTICRAFT", "RESOURCEFUL", "INGENUITY", "PROFESSION" }
+-- Any profession, primary or secondary, named in the tooltip ("Increases
+-- Fishing", "Requires Engineering", a cooking hat): a profession item, never
+-- judged (the user, 2026-11-03: "any profession items, primary and secondary").
+local PROF_WORDS = { "Alchemy", "Blacksmithing", "Enchanting", "Engineering", "Herbalism", "Inscription",
+    "Jewelcrafting", "Leatherworking", "Mining", "Skinning", "Tailoring", "Cooking", "Fishing", "Archaeology" }
+-- plus the game's own names for them, so other languages match too (Codex Sol)
+do
+    local seen = {}
+    for _, w in ipairs(PROF_WORDS) do seen[w] = true end
+    local name = C_TradeSkillUI and C_TradeSkillUI.GetTradeSkillDisplayName
+    for _, line in ipairs({ 171, 164, 333, 202, 182, 773, 755, 165, 186, 393, 197, 185, 356, 794 }) do
+        local ok, n = pcall(name or error, line)
+        if ok and type(n) == "string" and n ~= "" and not seen[n] then
+            seen[n] = true
+            PROF_WORDS[#PROF_WORDS + 1] = n
+        end
+    end
+end
+local profTip = {}   -- link -> its tooltip names a profession
+local function notCombatGear(link, classID, equipLoc)
+    if classID ~= 2 and classID ~= 4 then return true end   -- weapon / armor only
+    if not SLOT_OF[equipLoc or ""] then return true end      -- profession tool / gear slots, tabards, shirts
+    local stats = C_Item.GetItemStats(link) or {}
+    local combat = false
+    for k in pairs(stats) do
+        for _, s in ipairs(PROF_STAT) do
+            if k:find(s, 1, true) then return true end
+        end
+        for _, s in ipairs(COMBAT_STAT) do
+            if k:find(s, 1, true) then combat = true end
+        end
+    end
+    if not combat then return true end
+    -- profession gear says so in its tooltip; the name alone isn't reliable.
+    -- Read once per item.
+    if profTip[link] == nil then
+        local tip = C_TooltipInfo and C_TooltipInfo.GetHyperlink and C_TooltipInfo.GetHyperlink(link)
+        -- not loaded yet: kept for now (judged on a later redraw), and no "no" remembered
+        if not (tip and tip.lines and #tip.lines > 1) then return true end
+        profTip[link] = false
+        for _, line in ipairs(tip.lines) do
+            local t = line.leftText
+            if type(t) == "string" and not (issecretvalue and issecretvalue(t)) then
+                for _, w in ipairs(PROF_WORDS) do
+                    if t:find(w, 1, true) then profTip[link] = true break end
+                end
+            end
+            if profTip[link] then break end
+        end
+    end
+    return profTip[link]
+end
+SP.NotCombatGear = notCombatGear
+
+-- Right-click a Spares row: never sell, disenchant or vendor it (again: undo).
+function SP:ToggleKeep(id)
+    if not id then return end
+    VoidGearDB = VoidGearDB or {}
+    VoidGearDB.neverDE = VoidGearDB.neverDE or {}
+    local now = not VoidGearDB.neverDE[id] or nil
+    VoidGearDB.neverDE[id] = now
+    return now
+end
+
 function SP:Judge()
+    local setItems = equipmentSetItems()
     local R = VoidGear.Roster
     local roster = R:All()
     local me = R:Key()
@@ -494,7 +594,8 @@ function SP:Judge()
         local _, _, _, equipLoc, _, classID, subclassID = C_Item.GetItemInfoInstant(it.link)
         if (classID == 2 or classID == 4) and SLOT_OF[equipLoc] and not (classID == 4 and subclassID == 5) then
             local name, _, quality, _, minLevel, _, _, _, _, _, _, _, _, bindType, expacID = C_Item.GetItemInfo(it.link)
-            local e = { link = it.link, owner = it.owner, bank = it.bank, quality = quality, ilvl = GetDetailedItemLevelInfo(it.link) }
+            local e = { link = it.link, owner = it.owner, bank = it.bank, bag = it.bag, slot = it.slot, bound = it.bound,
+                quality = quality, ilvl = GetDetailedItemLevelInfo(it.link) }
             if not name then
                 pending = true
                 C_Item.RequestLoadItemDataByID(it.id)
@@ -502,6 +603,16 @@ function SP:Judge()
             elseif expacID == current_expac and (e.ilvl or 0) > 0 and e.ilvl < 100 then
                 -- a current-expansion piece at item level 1 (Shield of the Blood Knight
                 -- Matriarch, 2026-11-03) is cosmetic, not gear to judge
+            elseif notCombatGear(it.link, classID, equipLoc) then
+                -- profession tools and gear, fishing hats, fun items: no combat
+                -- stats, so every character scores them as worthless. VoidGear
+                -- doesn't judge them at all (a fishing hat was disenchanted, 2026-11-03).
+                e.verdict, e.who = "keep", it.owner
+                e.why = "not combat gear (profession, fishing or fun item): left alone"
+            elseif protectedWhy(it.id, setItems) then
+                -- yours to keep, whatever the scores say: disenchanting can't be undone
+                e.verdict, e.who = "keep", it.owner
+                e.why = protectedWhy(it.id, setItems)
             elseif quality and quality >= 2 and quality <= 4 then
                 local info = { classID = classID, subclassID = subclassID, equipLoc = equipLoc, minLevel = minLevel }
                 -- Can it go to another of your characters? The warband bank's can.
@@ -544,13 +655,18 @@ function SP:Judge()
                     -- like +500% (2026-11-03): off-specs compare item levels instead.
                     local bestSpec, offKey, offSpec, offIlvl, offWorn
                     local weapon = SLOT_OF[equipLoc] == 16 or SLOT_OF[equipLoc] == 17
+                    -- Trinkets: item levels, for every character. Their worth is mostly
+                    -- the effect, which is only scored on the character itself, so the
+                    -- same trinket read "+17.6%, keep" on its owner and "disenchant"
+                    -- on another character (2026-11-03). Item levels read the same everywhere.
+                    local trinket = SLOT_OF[equipLoc] == 13
                     local myIlvl = e.ilvl or 0
                     for _, key in ipairs(who) do
                         local rec, worn = roster[key], false
                         for _, srec in ipairs(specsOf(rec)) do
                             if canWear(srec, info, it.link) then
                                 if not worn then wearers[#wearers + 1] = key; worn = true end
-                                if (srec == rec or (srec.primary == rec.primary and not weapon)) and wornMatches(rec, info) then   -- same main stat (Unholy vs Frost): stats compare; another spec's weapon setup is not what is worn
+                                if not trinket and (srec == rec or (srec.primary == rec.primary and not weapon)) and wornMatches(rec, info) then   -- same main stat (Unholy vs Frost): stats compare; another spec's weapon setup is not what is worn
                                     local cand, cur = score(srec, it.link), current(srec, info, it.link)
                                     if cand and cur then
                                         local ratio = cur > 0 and cand / cur or math.huge
@@ -559,16 +675,16 @@ function SP:Judge()
                                             bestPct = cur > 0 and (cand - cur) / cur * 100 or nil
                                         end
                                     end
-                                elseif srec == rec or srec.primary ~= rec.primary or weapon then   -- else item levels
-                                    -- off-specs on another main stat, and the saved spec when
-                                    -- what it wears there isn't its own main stat (a druid
-                                    -- saved as Feral in Intellect gear: "+468%", 2026-11-03):
-                                    -- item levels. An off-spec on the same main stat (Blood
-                                    -- vs Unholy) is covered by the saved spec's own check.
-                                    local w = wornIlvl(rec, info, it.link, srec ~= rec)
-                                    if w and myIlvl >= w and (not offIlvl or myIlvl - w > offIlvl - offWorn) then
-                                        offKey, offSpec, offIlvl, offWorn = key, srec.spec, myIlvl, w
-                                    end
+                                end
+                                -- Item levels, always, for every spec that can wear it: a
+                                -- second, independent test. Disenchant needs BOTH to say
+                                -- it's worse; either one saying "as good" keeps it. One
+                                -- wrong score must never send a piece to be disenchanted
+                                -- (the trinkets, 2026-11-03: "we have to be really careful
+                                -- ... your algos being wrong").
+                                local w = wornIlvl(rec, info, it.link, srec ~= rec)
+                                if w and myIlvl >= w and (not offIlvl or myIlvl - w > offIlvl - offWorn) then
+                                    offKey, offSpec, offIlvl, offWorn = key, srec.spec, myIlvl, w
                                 end
                             end
                         end
@@ -593,6 +709,12 @@ function SP:Judge()
                         e.verdict, e.who = "keep", offKey
                         e.why = ("for %s (%s): item level %d vs %d worn"):format(shortName(offKey), offSpec or "?",
                             offIlvl, offWorn)
+                    elseif trinket and #wearers > 0 then
+                        -- below what's worn, but a trinket's effect isn't scored: a
+                        -- weaker-looking one can still be the better one. Never on the
+                        -- disenchant list; you decide (Codex Sol, 2026-11-03).
+                        e.verdict, e.who = "check", it.owner
+                        e.why = "trinket below what's worn: its effect isn't scored, so you decide (right-click to always keep)"
                     elseif catalystFor(it, info, roster[me]) then
                         local what, mine = catalystFor(it, info, roster[me])
                         e.verdict, e.who = "keep", me
@@ -622,10 +744,14 @@ function SP:Judge()
                         local deValue = (price(DE_MAT[quality]) or 0)
                         local ahPrice = sellable and VoidAH_Price and VoidAH_Price(it.id)
                         local deBy
-                        if tradable then
-                            deBy = enchanters[1]
-                        elseif enchanter(it.owner) then
+                        -- the holder disenchants its own pieces when it can; only
+                        -- otherwise does a warbound piece travel (first: you, if
+                        -- you enchant). Before, a piece in Murrath's bags read
+                        -- "send it to Vede" when viewed on Vede (2026-11-03).
+                        if enchanter(it.owner) then
                             deBy = it.owner
+                        elseif tradable then
+                            deBy = enchanters[1]
                         end
                         if ahPrice and ahPrice > deValue * 1.2 and ahPrice > 0 then
                             -- a gear price is one listing for that item at any level: a
