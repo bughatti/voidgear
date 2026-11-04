@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.4] — 2026-11-03
+
+### Fixed
+- **A BoE piece on another character could be listed to disenchant** even though it might still sell: whether it's unbound is only known on the character holding it. Viewed from elsewhere it now shows under **Check** ("if it's still unbound, sell it"), and as **Sell** on its own character.
+
 ## [1.1.3] — 2026-11-03
 
 ### Fixed

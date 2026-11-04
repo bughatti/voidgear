@@ -816,10 +816,18 @@ function SP:Judge()
                         elseif tradable then
                             deBy = enchanters[1]
                         end
+                        -- another character's BoE: whether it's still unbound is only
+                        -- known on that character (Murrath saw "sell", Littlevede saw
+                        -- "disenchant" for the same piece, 2026-11-03)
+                        local maybePrice = not sellable and it.bound == nil and (bindType == 2 or bindType == 3)
+                            and VoidAH_Price and VoidAH_Price(it.id)
                         if ahPrice and ahPrice > deValue * 1.2 and ahPrice > 0 then
                             -- a gear price is one listing for that item at any level: a
                             -- hint, not a quote (one showed 217,712g, 2026-11-03)
                             e.verdict, e.why = "sell", ("BoE: listed at %s on your AH (check it before you post)"):format(money(ahPrice))
+                        elseif maybePrice and maybePrice > deValue * 1.2 then
+                            e.verdict, e.who = "check", it.owner
+                            e.why = ("BoE: if it's still unbound, sell it (listed at %s); look on %s"):format(money(maybePrice), shortName(it.owner))
                         elseif deBy then
                             e.verdict, e.who = "de", deBy
                             if deBy == it.owner then
