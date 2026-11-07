@@ -35,6 +35,12 @@ local STAT_KEY_MAP = {
     ITEM_MOD_SPELL_POWER_SHORT      = "SpellPower",
     ITEM_MOD_DAMAGE_PER_SECOND_SHORT = "DPS",
     RESISTANCE0_NAME                = "Armor",
+    -- attack power on Forever gear (Chasm Walkers: +4 attack power scored as nothing until
+    -- 2026-11-07); weighted per class in StatWeights' forever table
+    ITEM_MOD_ATTACK_POWER_SHORT        = "AttackPower",
+    ITEM_MOD_ATTACK_POWER              = "AttackPower",
+    ITEM_MOD_RANGED_ATTACK_POWER_SHORT = "RangedAttackPower",
+    ITEM_MOD_RANGED_ATTACK_POWER       = "RangedAttackPower",
     -- Combined
     ITEM_MOD_AGI_STR_INT_SHORT = "AgiStrInt",  -- all-3 prismatic
     ITEM_MOD_AGI_STR_SHORT     = "AgiStr",

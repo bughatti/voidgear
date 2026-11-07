@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.5] — 2026-11-07
+
+### Fixed
+- **WoW Forever: attack power counted for nothing.** Gear with "+attack power" (or "+ranged attack power") scored as if that stat weren't there, so a piece like Chasm Walkers looked worse than it is. Attack power now counts for every physical class (about half as much as your main stat; hunters also value ranged attack power). Upgrade arrows in VoidBags and quest reward advice in VoidQuest use these scores too.
+
 ## [1.1.4] — 2026-11-03
 
 ### Fixed

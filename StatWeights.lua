@@ -78,19 +78,22 @@ end
 -- casters. Armor is per point (a piece has ~50-100), so it's a tiebreaker.
 -- Approximate by design -- the goal is "is this drop better", not a sim.
 ----------------------------------------------------------------------
+-- Attack power: Classic-style, 1 strength (or a rogue's agility) is worth about 2 attack
+-- power to these classes, so AP weighs about half the primary. Plain "+attack power" raises
+-- melee AND ranged attack power, so hunters weigh it like ranged AP (Codex review).
 SW.forever = {
     WARRIOR = { label = "Warrior (leveling)", primary = "Strength",
-        weights = { Agility = 0.5, Stamina = 0.35, DPS = 3.0, Armor = 0.02 } },
+        weights = { Agility = 0.5, Stamina = 0.35, AttackPower = 0.5, DPS = 3.0, Armor = 0.02 } },
     PALADIN = { label = "Paladin (leveling)", primary = "Strength",
-        weights = { Intellect = 0.35, Stamina = 0.35, Agility = 0.25, Spirit = 0.15, SpellPower = 0.3, DPS = 3.0, Armor = 0.02 } },
+        weights = { Intellect = 0.35, Stamina = 0.35, Agility = 0.25, Spirit = 0.15, SpellPower = 0.3, AttackPower = 0.5, DPS = 3.0, Armor = 0.02 } },
     HUNTER  = { label = "Hunter (leveling)", primary = "Agility",
-        weights = { Intellect = 0.3, Stamina = 0.35, Spirit = 0.1, DPS = 2.0, Armor = 0.02 } },
+        weights = { Intellect = 0.3, Stamina = 0.35, Spirit = 0.1, RangedAttackPower = 0.5, AttackPower = 0.5, DPS = 2.0, Armor = 0.02 } },
     ROGUE   = { label = "Rogue (leveling)", primary = "Agility",
-        weights = { Strength = 0.5, Stamina = 0.35, DPS = 3.0, Armor = 0.02 } },
+        weights = { Strength = 0.5, Stamina = 0.35, AttackPower = 0.5, DPS = 3.0, Armor = 0.02 } },
     SHAMAN  = { label = "Shaman (leveling)", primary = "Strength",
-        weights = { Agility = 0.4, Intellect = 0.5, Stamina = 0.35, Spirit = 0.2, SpellPower = 0.4, DPS = 3.0, Armor = 0.02 } },
+        weights = { Agility = 0.4, Intellect = 0.5, Stamina = 0.35, Spirit = 0.2, SpellPower = 0.4, AttackPower = 0.4, DPS = 3.0, Armor = 0.02 } },
     DRUID   = { label = "Druid (leveling)", primary = "Agility",
-        weights = { Strength = 0.8, Intellect = 0.5, Stamina = 0.35, Spirit = 0.3, SpellPower = 0.4, Armor = 0.02 } },
+        weights = { Strength = 0.8, Intellect = 0.5, Stamina = 0.35, Spirit = 0.3, SpellPower = 0.4, AttackPower = 0.5, Armor = 0.02 } },
     MAGE    = { label = "Mage (leveling)", primary = "Intellect",
         weights = { Spirit = 0.5, Stamina = 0.4, SpellPower = 0.9, Armor = 0.01 } },
     PRIEST  = { label = "Priest (leveling)", primary = "Intellect",
