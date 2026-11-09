@@ -1,5 +1,7 @@
 # VoidGear
 
+**Works on:** WoW Midnight · WoW Forever (upgrade scoring only)
+
 **Know what to wear, what to fix and where your crests go: a gear planner built from what the top Mythic+ players of your spec actually use.**
 
 VoidGear compares your gear with the top Mythic+ players of your spec, then tells you which enchants, gems and consumables you're missing and how to buy them. It finds your upgrades from this season's raid, dungeons, world bosses and Great Vault, and shows which item your crests should go into next. Everything is scored for your spec, from Blizzard's own data.
@@ -64,7 +66,7 @@ VoidGear compares your gear with the top Mythic+ players of your spec, then tell
 
 ## Getting Started
 
-1. Install with the CurseForge app, or copy the `VoidGear` folder into `World of Warcraft/_retail_/Interface/AddOns/`.
+1. Install with the CurseForge app, or copy the `VoidGear` folder into `World of Warcraft/_retail_/Interface/AddOns/` (WoW Forever: `_forever_/Interface/AddOns/`).
 2. Restart WoW or `/reload`.
 3. Open VoidGear (`/vgear`, the minimap button or the Gear Plan tab) and press **Scan Loot** once. It reads this season's loot from the Adventure Guide for your spec.
 4. Start with the **Prep** tab: it lists what to enchant, gem and buy right now.
@@ -83,7 +85,8 @@ VoidGear compares your gear with the top Mythic+ players of your spec, then tell
 
 ## Compatibility
 
-- **WoW 12.1.5** (Midnight Season 2)
+- **WoW Midnight** 12.1.5 (Season 2)
+- **WoW Forever**: scores your drops for VoidBags' upgrade arrows; the gear planner is Midnight only
 - Standalone: nothing else to install
 - Works alongside VoidAH (shopping list), VoidBags and Chonky Character Sheet
 
