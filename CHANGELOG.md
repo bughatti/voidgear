@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.1] — 2026-11-10
+
+### Fixed (WoW Forever)
+- **Quest upgrades no longer lists far-off quests** while their level is still loading: level 59 Silithus and Mount Hyjal quests showed up for a level 31 character. A quest now waits until the game has sent its level, and the list fills in as levels arrive.
+- Quest upgrades also only lists your own faction's quests now (with VoidQuest 0.3.19, which knows each quest's side).
+
 ## [1.2.0] — 2026-11-10
 
 ### Added (WoW Forever)

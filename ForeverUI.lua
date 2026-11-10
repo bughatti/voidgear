@@ -131,7 +131,8 @@ end
 local HANDS = { INVTYPE_WEAPON = true, INVTYPE_WEAPONMAINHAND = true, INVTYPE_WEAPONOFFHAND = true,
     INVTYPE_SHIELD = true, INVTYPE_HOLDABLE = true }
 
-local function Upgrade(itemID, link)
+-- onlySlot (VoidAsk, "my off-hand is bad"): compare against that one slot only
+local function Upgrade(itemID, link, onlySlot)
     local _, _, _, equipLoc = GetItemInfoInstant(itemID)
     local slots = SLOTS[equipLoc]
     if not slots then return nil end
@@ -142,7 +143,7 @@ local function Upgrade(itemID, link)
     -- beat the OTHER ring / trinket / hand (Sol review); none left = nothing to compare
     local free = {}
     for _, slot in ipairs(slots) do
-        if GetInventoryItemID("player", slot) ~= itemID then free[#free + 1] = slot end
+        if GetInventoryItemID("player", slot) ~= itemID and (not onlySlot or slot == onlySlot) then free[#free + 1] = slot end
     end
     if #free == 0 then return nil end
     slots = free
@@ -168,7 +169,7 @@ end
 local loading = false   -- some item data was still on its way: the list fills in as it arrives
 
 -- One candidate item: its row, or nil if it isn't for you. fromLevel/toLevel: the level window.
-local function Candidate(itemID, lvl)
+local function Candidate(itemID, lvl, onlySlot)
     local ok, learnAt = CanWear(itemID)
     if not ok then return nil end
     local name, link, quality, _, reqLevel = GetItemInfo(itemID)
@@ -180,12 +181,12 @@ local function Candidate(itemID, lvl)
     if (quality or 0) < 2 then return nil end                     -- greens and better
     reqLevel = math.max(reqLevel or 0, learnAt or 0)
     if reqLevel > lvl + 3 then return nil end                     -- not yet
-    local gain, pct, slot = Upgrade(itemID, link)
+    local gain, pct, slot = Upgrade(itemID, link, onlySlot)
     if not gain then return nil end
     return { id = itemID, link = link, name = name, gain = gain, pct = pct, slot = slot, req = reqLevel }
 end
 
-local function DungeonRows(lvl)
+local function DungeonRows(lvl, onlySlot)
     local J = _G.VoidDungeon
     if not (J and J.dungeons and J.Bosses and J.Loot) then return nil end
     local out, seen = {}, {}
@@ -197,7 +198,7 @@ local function DungeonRows(lvl)
                 for _, l in ipairs(J:Loot(b.npc)) do
                     local id, chance = l[1], l[2]
                     if not seen[id] then
-                        local c = Candidate(id, lvl)
+                        local c = Candidate(id, lvl, onlySlot)
                         if c then
                             seen[id] = true
                             c.where = ("%s, %s (%s)"):format(b.name, d.name, d.lv or "?")
@@ -221,7 +222,7 @@ end
 
 local BATTLEGROUNDS = { ["Alterac Valley"] = true, ["Arathi Basin"] = true, ["Warsong Gulch"] = true }
 
-local function QuestRows(lvl)
+local function QuestRows(lvl, onlySlot)
     local VQ = _G.VoidQuest
     local FQ = VQ and VQ.Forever
     if not (VQ and VQ.ForeverQuests and FQ and FQ.Eligible and FQ.Status) then return nil end
@@ -236,10 +237,14 @@ local function QuestRows(lvl)
         local ok = ids and ids ~= "" and not BATTLEGROUNDS[zone] and not IsTestQuest(r[1])
             and FQ:Eligible(r) and FQ:Status(qid) ~= "done"
         local ql = ok and FQ.Level and FQ:Level(qid) or 0
+        -- level not loaded yet (0): wait for it rather than list it. Without this, level-59 Silithus and
+        -- Hyjal quests came up at 31 (VoidAsk test, 2026-11-10); FQ:Level asked the game for it, and
+        -- QUEST_DATA_LOAD_RESULT refreshes the panel when it arrives
+        if ok and ql == 0 and FQ.Level then loading = true; ok = false end
         if ok and ql <= lvl + 3 then
             local best
             for tok in ids:gmatch("%d+") do
-                local c = Candidate(tonumber(tok), lvl)
+                local c = Candidate(tonumber(tok), lvl, onlySlot)
                 if c and (not best or c.gain > best.gain) then best = c end
             end
             if best then
@@ -255,6 +260,18 @@ local function QuestRows(lvl)
     end
     return out
 end
+
+-- For VoidAsk (the question box): the same lists the panel shows.
+--   F:Upgrades("quests" | "dungeons", level, onlySlot) -> list | nil (that addon missing), stillLoading
+--   rows: { id, link, name, gain, pct, slot, req, where, near, chance?, qid?, inLog?, ql? }
+function F:Upgrades(kind, lvl, onlySlot)
+    loading = false
+    local list
+    if kind == "dungeons" then list = DungeonRows(lvl, onlySlot) else list = QuestRows(lvl, onlySlot) end
+    return list, loading
+end
+function F:Wearing(slot) return EquippedScore(slot) end   -- score, link
+F.SLOT_NAME = SLOT_NAME
 
 ----------------------------------------------------------------------
 -- Panel
