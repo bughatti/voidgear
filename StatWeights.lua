@@ -38,6 +38,14 @@ function SW:GetCurrent()
     VoidGearCharDB = VoidGearCharDB or {}
     VoidGearCharDB.statWeights = VoidGearCharDB.statWeights or {}
 
+    -- WoW Forever: no specs -- per-class leveling weights, before any saved retail preset or
+    -- custom set (a Blood DK preset picked in the panel put Haste/Mastery weights on Classic
+    -- gear for VoidBags and VoidQuest; Forever audit, 2026-11-09).
+    local _, class = UnitClass("player")
+    if VG.IS_FOREVER then
+        return self.forever[class] or self.forever.WARRIOR
+    end
+
     if VoidGearCharDB.statWeights.custom then
         return VoidGearCharDB.statWeights.custom
     end
@@ -45,12 +53,6 @@ function SW:GetCurrent()
     local presetKey = VoidGearCharDB.statWeights.preset
     if presetKey and self.presets[presetKey] then
         return self.presets[presetKey]
-    end
-
-    -- WoW Forever: no specs -- per-class leveling weights.
-    local _, class = UnitClass("player")
-    if VG.IS_FOREVER then
-        return self.forever[class] or self.forever.WARRIOR
     end
 
     -- Auto-detect by class + spec
@@ -81,25 +83,43 @@ end
 -- Attack power: Classic-style, 1 strength (or a rogue's agility) is worth about 2 attack
 -- power to these classes, so AP weighs about half the primary. Plain "+attack power" raises
 -- melee AND ranged attack power, so hunters weigh it like ranged AP (Codex review).
+-- Classic "Equip:" stats (EffectValuer:ClassicStat, 2026-11-09), per 1 unit: 1% crit / hit is
+-- worth about a dozen points of the main stat to a melee class while leveling; weapon skill a
+-- little; defense / avoidance only to the classes that tank; spell crit / hit / mp5 to casters;
+-- one school's spell damage (SchoolPower) about half of all-school spell power. WandDPS = a
+-- caster's wand (their ranged attack; a staff's melee DPS stays worth nothing to them).
 SW.forever = {
     WARRIOR = { label = "Warrior (leveling)", primary = "Strength",
-        weights = { Agility = 0.5, Stamina = 0.35, AttackPower = 0.5, DPS = 3.0, Armor = 0.02 } },
+        weights = { Agility = 0.5, Stamina = 0.35, AttackPower = 0.5, DPS = 3.0, Armor = 0.02,
+                    CritPct = 12, HitPct = 12, WeaponSkill = 1.5, HP5 = 0.5,
+                    Defense = 0.5, DodgePct = 6, ParryPct = 5, BlockPct = 3, BlockValue = 0.1 } },
     PALADIN = { label = "Paladin (leveling)", primary = "Strength",
-        weights = { Intellect = 0.35, Stamina = 0.35, Agility = 0.25, Spirit = 0.15, SpellPower = 0.3, AttackPower = 0.5, DPS = 3.0, Armor = 0.02 } },
+        weights = { Intellect = 0.35, Stamina = 0.35, Agility = 0.25, Spirit = 0.15, SpellPower = 0.3, AttackPower = 0.5, DPS = 3.0, Armor = 0.02,
+                    CritPct = 12, HitPct = 12, WeaponSkill = 1.5, HP5 = 0.5, SpellCritPct = 4, MP5 = 1.0, Healing = 0.2, SchoolPower = 0.15,
+                    Defense = 0.5, DodgePct = 6, ParryPct = 5, BlockPct = 3, BlockValue = 0.1 } },
     HUNTER  = { label = "Hunter (leveling)", primary = "Agility",
-        weights = { Intellect = 0.3, Stamina = 0.35, Spirit = 0.1, RangedAttackPower = 0.5, AttackPower = 0.5, DPS = 2.0, Armor = 0.02 } },
+        weights = { Intellect = 0.3, Stamina = 0.35, Spirit = 0.1, RangedAttackPower = 0.5, AttackPower = 0.5, DPS = 2.0, Armor = 0.02,
+                    CritPct = 12, HitPct = 10, WeaponSkill = 1.0, HP5 = 0.5, MP5 = 0.6 } },
     ROGUE   = { label = "Rogue (leveling)", primary = "Agility",
-        weights = { Strength = 0.5, Stamina = 0.35, AttackPower = 0.5, DPS = 3.0, Armor = 0.02 } },
+        weights = { Strength = 0.5, Stamina = 0.35, AttackPower = 0.5, DPS = 3.0, Armor = 0.02,
+                    CritPct = 12, HitPct = 12, WeaponSkill = 1.5, HP5 = 0.5, DodgePct = 4 } },
     SHAMAN  = { label = "Shaman (leveling)", primary = "Strength",
-        weights = { Agility = 0.4, Intellect = 0.5, Stamina = 0.35, Spirit = 0.2, SpellPower = 0.4, AttackPower = 0.4, DPS = 3.0, Armor = 0.02 } },
+        weights = { Agility = 0.4, Intellect = 0.5, Stamina = 0.35, Spirit = 0.2, SpellPower = 0.4, AttackPower = 0.4, DPS = 3.0, Armor = 0.02,
+                    CritPct = 10, HitPct = 10, WeaponSkill = 1.0, HP5 = 0.5, SpellCritPct = 5, SpellHitPct = 4, MP5 = 1.2, Healing = 0.2, SchoolPower = 0.2,
+                    BlockPct = 1, BlockValue = 0.05 } },
     DRUID   = { label = "Druid (leveling)", primary = "Agility",
-        weights = { Strength = 0.8, Intellect = 0.5, Stamina = 0.35, Spirit = 0.3, SpellPower = 0.4, AttackPower = 0.5, Armor = 0.02 } },
+        weights = { Strength = 0.8, Intellect = 0.5, Stamina = 0.35, Spirit = 0.3, SpellPower = 0.4, AttackPower = 0.5, Armor = 0.02,
+                    CritPct = 10, HitPct = 10, HP5 = 0.5, SpellCritPct = 4, SpellHitPct = 3, MP5 = 1.2, Healing = 0.25, SchoolPower = 0.2,
+                    Defense = 0.3, DodgePct = 5 } },
     MAGE    = { label = "Mage (leveling)", primary = "Intellect",
-        weights = { Spirit = 0.5, Stamina = 0.4, SpellPower = 0.9, Armor = 0.01 } },
+        weights = { Spirit = 0.5, Stamina = 0.4, SpellPower = 0.9, Armor = 0.01,
+                    SpellCritPct = 10, SpellHitPct = 8, MP5 = 0.8, SchoolPower = 0.45, HP5 = 0.4, WandDPS = 1.5 } },
     PRIEST  = { label = "Priest (leveling)", primary = "Intellect",
-        weights = { Spirit = 0.7, Stamina = 0.4, SpellPower = 0.9, Armor = 0.01 } },
+        weights = { Spirit = 0.7, Stamina = 0.4, SpellPower = 0.9, Armor = 0.01,
+                    SpellCritPct = 7, SpellHitPct = 6, MP5 = 1.5, Healing = 0.35, SchoolPower = 0.45, HP5 = 0.4, WandDPS = 1.5 } },
     WARLOCK = { label = "Warlock (leveling)", primary = "Intellect",
-        weights = { Stamina = 0.6, Spirit = 0.3, SpellPower = 0.9, Armor = 0.01 } },
+        weights = { Stamina = 0.6, Spirit = 0.3, SpellPower = 0.9, Armor = 0.01,
+                    SpellCritPct = 8, SpellHitPct = 8, MP5 = 0.8, SchoolPower = 0.45, HP5 = 0.4, WandDPS = 1.5 } },
 }
 
 ----------------------------------------------------------------------

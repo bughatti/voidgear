@@ -422,6 +422,8 @@ do
     f:RegisterEvent("WEEKLY_REWARDS_UPDATE")
     f:RegisterEvent("ENCOUNTER_END")
     f:SetScript("OnEvent", function(_, event)
+        -- WoW Forever has no seasons or Adventure Guide raids (EJ_SelectTier(0) errored, 2026-11-09)
+        if VoidGear.IS_FOREVER then return end
         -- the season's dungeon list loads after login; record a moment later
         C_Timer.After(event == "PLAYER_ENTERING_WORLD" and 5 or 1, function() DB:RecordRaidUnlocks() end)
     end)

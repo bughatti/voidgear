@@ -22,7 +22,9 @@ SlashCmdList["VOIDGEAR"] = function(msg)
     dbg("slash: %s", tostring(msg))
     msg = (msg or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
 
-    if (msg == "" or msg == "show" or msg == "toggle") and VoidGear.IS_FOREVER then
+    if (msg == "" or msg == "show" or msg == "toggle") and VoidGear.IS_FOREVER and VoidGear.ForeverUI then
+        VoidGear.ForeverUI:Toggle()
+    elseif (msg == "" or msg == "show" or msg == "toggle") and VoidGear.IS_FOREVER then
         -- The planner is raid/M+ loot for retail -- nothing for Forever.
         local preset = VoidGear.StatWeights:GetCurrent()
         VoidGear:Print("WoW Forever: VoidGear scores your drops for VoidBags' upgrade arrows using "

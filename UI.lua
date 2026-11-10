@@ -1939,6 +1939,9 @@ liveEvents:SetScript("OnEvent", function(_, event)
 end)
 
 function UI:Toggle()
+    -- WoW Forever: its own panel (ForeverUI.lua); this one is Midnight's raid / M+ planner.
+    -- The minimap button and the Void hub reached it on Forever (audit, 2026-11-09).
+    if VoidGear.IS_FOREVER and VoidGear.ForeverUI then return VoidGear.ForeverUI:Toggle() end
     BuildPanel()
     if panel:IsShown() then
         panel:Hide()

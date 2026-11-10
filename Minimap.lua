@@ -37,8 +37,8 @@ local function CreateMinimapButton()
 
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     btn:SetScript("OnClick", function(_, button)
-        if button == "RightButton" then
-            -- Right-click cycles through bundled loadouts
+        if button == "RightButton" and not VoidGear.IS_FOREVER then
+            -- Right-click cycles through bundled loadouts (retail top players; none on WoW Forever)
             local keys = {}
             for k in pairs(VoidGear:GetAllLoadouts()) do keys[#keys + 1] = k end
             table.sort(keys)
@@ -59,6 +59,12 @@ local function CreateMinimapButton()
     btn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText("|cff00c7ffVoidGear|r")
+        if VoidGear.IS_FOREVER then
+            GameTooltip:AddLine("Click: your gear and the dungeon / quest upgrades for your level", 1, 1, 1, true)
+            GameTooltip:AddLine("Drag: reposition", 0.7, 0.7, 0.7)
+            GameTooltip:Show()
+            return
+        end
         GameTooltip:AddLine("Left-click: open gear planner", 1, 1, 1)
         GameTooltip:AddLine("Right-click: cycle loadout", 1, 1, 1)
         GameTooltip:AddLine("Drag: reposition", 0.7, 0.7, 0.7)

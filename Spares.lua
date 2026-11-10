@@ -582,6 +582,11 @@ function SP:ToggleKeep(id)
 end
 
 function SP:Judge()
+    -- WoW Forever: these verdicts are Midnight rules (current-expansion enchanting materials,
+    -- old items cosmetic); every Classic item came out wrong (Forever audit, 2026-11-09)
+    if VoidGear.IS_FOREVER then
+        return { keep = {}, check = {}, sell = {}, de = {}, vendor = {}, wait = {}, deByWho = {}, deMats = {}, unknown = {} }
+    end
     local setItems = equipmentSetItems()
     local R = VoidGear.Roster
     local roster = R:All()

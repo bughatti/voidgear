@@ -73,14 +73,78 @@ end
 
 ----------------------------------------------------------------------
 -- Pull the Use:/Equip: effect lines out of a tooltip-line array.
+-- WoW Forever: weapon procs read "Chance on hit: ..." (Classic wording).
 ----------------------------------------------------------------------
 function EV:ExtractEffects(lines)
     local out = {}
     for _, ln in ipairs(lines or {}) do
         local kind = ln:match("^(Use):") or ln:match("^(Equip):")
+            or (VoidGear.IS_FOREVER and ln:match("^(Chance on hit):"))
         if kind then out[#out + 1] = { kind = kind, text = ln } end
     end
     return out
+end
+
+----------------------------------------------------------------------
+-- WoW Forever: Classic "Equip:" stat lines are real stats, not procs. Forever audit,
+-- 2026-11-09: they all got the same flat "effect" guess (a fishing +5 as much as +2% crit),
+-- which VoidBags strips and VoidQuest keeps, so the two disagreed about upgrades.
+-- Returns statKey, amount (already scaled for conditions), or nil. statKey "" = a real
+-- line worth nothing for gear (a profession skill).
+--   "Improves your chance to get a critical strike by 1%."         CritPct
+--   "Improves your chance to hit with spells by 1%."                SpellHitPct
+--   "+20 Attack Power." / "+36 Attack Power when fighting Undead."  AttackPower (x0.25)
+--   "Increases damage and healing done by magical spells and effects by up to 12."  SpellPower
+--   "Increases healing done by spells and effects by up to 22."    Healing
+--   "Increases damage done by Shadow spells and effects by up to 10."  SchoolPower
+--   "Restores 3 mana per 5 sec."  MP5      "Increased Defense +7."  Defense
+--   "Increased Daggers +3."  WeaponSkill  "Increased Fishing +5."  ""
+----------------------------------------------------------------------
+local WEAPON_SKILLS = { "daggers", "swords", "axes", "maces", "fist weapons", "staves", "polearms",
+    "bows", "guns", "crossbows", "two%-handed swords", "two%-handed axes", "two%-handed maces" }
+local PROF_SKILLS = { "fishing", "mining", "herbalism", "skinning", "cooking", "first aid" }
+
+function EV:ClassicStat(text)
+    local t = text:lower():gsub("^equip:%s*", "")
+    local pct = tonumber(t:match("by (%d+)%%"))
+    local upTo = tonumber(t:match("up to (%d+)"))
+    if t:find("critical strike", 1, true) and pct then
+        return t:find("spell", 1, true) and "SpellCritPct" or "CritPct", pct
+    end
+    if (t:find("chance to hit", 1, true) or t:find("hit chance", 1, true)) and pct then
+        return t:find("spell", 1, true) and "SpellHitPct" or "HitPct", pct
+    end
+    if t:find("dodge", 1, true) and pct then return "DodgePct", pct end
+    if t:find("parry", 1, true) and pct then return "ParryPct", pct end
+    if t:find("block attacks", 1, true) and pct then return "BlockPct", pct end
+    local bv = tonumber(t:match("block value of your shield by (%d+)"))
+    if bv then return "BlockValue", bv end
+    local ap = tonumber(t:match("^%+(%d+) ranged attack power"))
+    if ap then return "RangedAttackPower", ap end
+    ap = tonumber(t:match("^%+(%d+) attack power"))
+    if ap then
+        if t:find("when fighting", 1, true) or t:find("in cat", 1, true) or t:find("form", 1, true) then
+            return "AttackPower", ap * 0.25   -- only against one creature type / in a form
+        end
+        return "AttackPower", ap
+    end
+    if upTo and t:find("damage and healing done by magical spells", 1, true) then return "SpellPower", upTo end
+    if upTo and t:find("healing done by spells", 1, true) then return "Healing", upTo end
+    if upTo and t:find("damage done by %a+ spells") then return "SchoolPower", upTo end
+    local mp5 = tonumber(t:match("restores (%d+) mana per 5"))
+    if mp5 then return "MP5", mp5 end
+    local hp5 = tonumber(t:match("restores (%d+) health every 5")) or tonumber(t:match("restores (%d+) health per 5"))
+    if hp5 then return "HP5", hp5 end
+    local def = tonumber(t:match("increased defense %+(%d+)"))
+    if def then return "Defense", def end
+    for _, s in ipairs(PROF_SKILLS) do
+        if t:find("increased " .. s .. " %+%d+") then return "", 0 end
+    end
+    for _, s in ipairs(WEAPON_SKILLS) do
+        local n = tonumber(t:match("increased " .. s .. " %+(%d+)"))
+        if n then return "WeaponSkill", n end
+    end
+    return nil
 end
 
 ----------------------------------------------------------------------
@@ -216,9 +280,22 @@ function EV:ValueExtras(link, weights, primary, budgetPerIlvl, opts)
             end
         end
         for _, eff in ipairs(self:ExtractEffects(lines)) do
-            local r = self:ClassifyEffect(eff, weights, primary, ilvl, budgetPerIlvl or 0, spellID)
-            details.effects[#details.effects + 1] = r
-            effectSum = effectSum + (r.value or 0)
+            -- WoW Forever: a Classic stat line goes to details.classic (ItemScorer adds it to the
+            -- stat score); an Equip line it can't read is worth nothing, never a flat guess
+            local key, amt
+            if VoidGear.IS_FOREVER and eff.kind == "Equip" then key, amt = self:ClassicStat(eff.text) end
+            if key then
+                if key ~= "" then
+                    details.classic = details.classic or {}
+                    details.classic[key] = (details.classic[key] or 0) + amt
+                end
+            elseif VoidGear.IS_FOREVER and eff.kind == "Equip" then
+                details.effects[#details.effects + 1] = { class = "unread", value = 0, estimate = true }
+            else
+                local r = self:ClassifyEffect(eff, weights, primary, ilvl, budgetPerIlvl or 0, spellID)
+                details.effects[#details.effects + 1] = r
+                effectSum = effectSum + (r.value or 0)
+            end
         end
     end
     -- Tier override: if we have a scraped BiS tier for this trinket (by NAME),

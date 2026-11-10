@@ -285,6 +285,28 @@ function Sc:ScoreLink(link, weights, primaryStat)
     end
     extra = extra or 0
 
+    -- WoW Forever: Classic "Equip:" stat lines (EffectValuer:ClassicStat) are stats, scored
+    -- like the item's own, so VoidBags (which drops "Effects") and VoidQuest agree.
+    if extraDetails and extraDetails.classic then
+        for key, amt in pairs(extraDetails.classic) do
+            local c = amt * GetWeight(key, weights, primaryStat)
+            if c ~= 0 then
+                statScore = statScore + c
+                breakdown[key] = (breakdown[key] or 0) + c
+            end
+        end
+    end
+    -- and a caster's wand: its DPS is their ranged attack (melee weapons' DPS stays 0 for them)
+    if VoidGear.IS_FOREVER and weights and weights.WandDPS then
+        local _, _, _, loc = C_Item.GetItemInfoInstant(link)
+        local dps = stats.ITEM_MOD_DAMAGE_PER_SECOND_SHORT
+        if loc == "INVTYPE_RANGEDRIGHT" and dps and dps > 0 then
+            local c = dps * weights.WandDPS
+            statScore = statScore + c
+            breakdown.WandDPS = c
+        end
+    end
+
     if weaponBonus > 0 then breakdown["WeaponDPS"] = weaponBonus end
     if extra > 0       then breakdown["Effects"]   = extra end
     return statScore + weaponBonus + extra, breakdown, stats, extraDetails

@@ -1,6 +1,6 @@
 # VoidGear
 
-**Works on:** WoW Midnight · WoW Forever (upgrade scoring only)
+**Works on:** WoW Midnight · WoW Forever (its own gear panel and upgrade scoring)
 
 **Know what to wear, what to fix and where your crests go: a gear planner built from what the top Mythic+ players of your spec actually use.**
 
@@ -41,6 +41,14 @@ VoidGear compares your gear with the top Mythic+ players of your spec, then tell
 - **Where your crests should go next**: a small badge on each upgradeable item on the Character window ranks your next upgrade per crest type by stat gain per crest spent
 - It knows when to stop at 4/6 and start another item. Visit the upgrade NPC once and it reads the exact costs, discounts included
 - `/vgear catalyst` lists what in your bags the Catalyst will take
+
+### WoW Forever
+- **Its own panel** (minimap button, Void hub or `/vgear`), scored with your class's weights (the spec doesn't matter there):
+  - **Your gear:** every slot with its score and the stats that count most
+  - **Dungeon upgrades:** drops from dungeons near your level that beat what you wear, with drop chances (needs **VoidDungeon**)
+  - **Quest upgrades:** quest rewards you can still get that beat what you wear; click one for the way to the quest giver (needs **VoidQuest**)
+  - Closest to your level first, only what your class can wear or wield
+- **Classic stats count:** crit %, hit %, attack power, spell damage, healing, mp5, defense, dodge / parry / block, weapon skill and caster wands, for VoidBags' upgrade arrows and VoidQuest's reward advice too
 
 ### Easy to reach
 - **Gear Plan tab** on the Character window (a round icon if you use Chonky Character Sheet), the minimap button, or `/vgear`

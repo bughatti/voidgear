@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.0] — 2026-11-10
+
+### Added (WoW Forever)
+- **A gear panel for Forever** (minimap button, Void hub or `/vgear`): **Your gear** scored with your class's weights, **Dungeon upgrades** (drops from dungeons near your level, with drop chances, from VoidDungeon) and **Quest upgrades** (quest rewards you can still get; click for the way to the quest giver, from VoidQuest). Closest to your level first. Midnight's planner no longer opens there.
+
+### Fixed (WoW Forever)
+- **Classic "Equip:" stats count:** crit %, hit %, attack power, spell damage, healing, mp5, defense, dodge / parry / block, weapon skill. Caster wands count too. VoidBags' upgrade arrows and VoidQuest's reward advice use this.
+- A saved retail preset no longer overrides your class weights on Forever; Spares and the season lookups are off there.
+
 ## [1.1.6] — 2026-11-09
 
 - **Fixed: box borders missing a side.** Depending on where a window sat on screen, its left, right or bottom line could vanish. Borders are now exactly one screen pixel and can't round away.
