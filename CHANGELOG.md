@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.2.3] — 2026-11-12
+
+- **Fixed: a side of a box could be missing**, e.g. the right line of the recipes box and its buttons when the game window is an odd number of pixels wide. Every Void box now always shows all four border lines.
+
 ## [1.2.2] — 2026-11-12
 
 - **The gear window (and the WoW Forever gear window) can be dragged** and stays where you put it, even after a restart, also after you resize it.

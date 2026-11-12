@@ -2,7 +2,7 @@
 ## Title: |cff00c7ffVoidGear|r
 ## Notes: Gear planner — what the top Mythic+ players of your spec wear, upgrades from raid, M+ and the vault, and where your crests should go
 ## Author: Vede
-## Version: 1.2.2
+## Version: 1.2.3
 ## SavedVariables: VoidGearDB
 ## SavedVariablesPerCharacter: VoidGearCharDB, VoidHubCharDB
 ## IconTexture: Interface\Icons\INV_Helmet_08
