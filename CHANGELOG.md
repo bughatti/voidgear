@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.2.2] — 2026-11-12
+
+- **The gear window (and the WoW Forever gear window) can be dragged** and stays where you put it, even after a restart, also after you resize it.
+- **Void hub button:** left-click opens one panel with all your Void addons by name, grouped, each with its own on/off switches (it replaces the ring of icons), with a background slider. The hub's info window now stays where you put it.
+
 ## [1.2.1] — 2026-11-10
 
 ### Fixed (WoW Forever)

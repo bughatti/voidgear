@@ -13,6 +13,7 @@
 -- Scores come from VoidGear's scorer: item stats plus Classic "Equip:" lines (crit %, hit %,
 -- attack power, spell damage ...) and weapon / wand DPS, weighted per class.
 ----------------------------------------------------------------------
+local _, ns = ...   -- ns.Move (VoidMove.lua)
 if (select(4, GetBuildInfo()) or 0) >= 100000 then return end   -- WoW Forever only
 
 local VG = VoidGear
@@ -454,6 +455,7 @@ local function Build()
     panel:RegisterForDrag("LeftButton")
     panel:SetScript("OnDragStart", panel.StartMoving)
     panel:SetScript("OnDragStop", panel.StopMovingOrSizing)
+    ns.Move(panel, { db = function() return VoidGearDB end, key = "foreverPanel" })   -- drag + kept after a restart (VoidMove.lua)
     panel:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = VoidPX() })
     panel:SetBackdropColor(0.05, 0.05, 0.07, 0.95)
     panel:SetBackdropBorderColor(A[1], A[2], A[3], 0.7)
