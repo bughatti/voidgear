@@ -106,8 +106,10 @@ local PROF_SKILLS = { "fishing", "mining", "herbalism", "skinning", "cooking", "
 
 function EV:ClassicStat(text)
     local t = text:lower():gsub("^equip:%s*", "")
-    local pct = tonumber(t:match("by (%d+)%%"))
-    local upTo = tonumber(t:match("up to (%d+)"))
+    -- decimals too: Forever's Pyrewood Signet Ring reads "Improves your chance to hit by 0.4%."
+    -- (the whole-number pattern missed it, so its hit counted 0; seen 2026-11-15)
+    local pct = tonumber(t:match("by (%d+%.?%d*)%%") or "")
+    local upTo = tonumber(t:match("up to (%d+)") or "")
     if t:find("critical strike", 1, true) and pct then
         return t:find("spell", 1, true) and "SpellCritPct" or "CritPct", pct
     end
@@ -117,11 +119,11 @@ function EV:ClassicStat(text)
     if t:find("dodge", 1, true) and pct then return "DodgePct", pct end
     if t:find("parry", 1, true) and pct then return "ParryPct", pct end
     if t:find("block attacks", 1, true) and pct then return "BlockPct", pct end
-    local bv = tonumber(t:match("block value of your shield by (%d+)"))
+    local bv = tonumber(t:match("block value of your shield by (%d+)") or "")
     if bv then return "BlockValue", bv end
-    local ap = tonumber(t:match("^%+(%d+) ranged attack power"))
+    local ap = tonumber(t:match("^%+(%d+) ranged attack power") or "")
     if ap then return "RangedAttackPower", ap end
-    ap = tonumber(t:match("^%+(%d+) attack power"))
+    ap = tonumber(t:match("^%+(%d+) attack power") or "")
     if ap then
         if t:find("when fighting", 1, true) or t:find("in cat", 1, true) or t:find("form", 1, true) then
             return "AttackPower", ap * 0.25   -- only against one creature type / in a form
@@ -131,20 +133,155 @@ function EV:ClassicStat(text)
     if upTo and t:find("damage and healing done by magical spells", 1, true) then return "SpellPower", upTo end
     if upTo and t:find("healing done by spells", 1, true) then return "Healing", upTo end
     if upTo and t:find("damage done by %a+ spells") then return "SchoolPower", upTo end
-    local mp5 = tonumber(t:match("restores (%d+) mana per 5"))
+    local mp5 = tonumber(t:match("restores (%d+) mana per 5") or "")
     if mp5 then return "MP5", mp5 end
-    local hp5 = tonumber(t:match("restores (%d+) health every 5")) or tonumber(t:match("restores (%d+) health per 5"))
+    local hp5 = tonumber(t:match("restores (%d+) health every 5") or "") or tonumber(t:match("restores (%d+) health per 5") or "")
     if hp5 then return "HP5", hp5 end
-    local def = tonumber(t:match("increased defense %+(%d+)"))
+    local def = tonumber(t:match("increased defense %+(%d+)") or "")
     if def then return "Defense", def end
     for _, s in ipairs(PROF_SKILLS) do
         if t:find("increased " .. s .. " %+%d+") then return "", 0 end
     end
     for _, s in ipairs(WEAPON_SKILLS) do
-        local n = tonumber(t:match("increased " .. s .. " %+(%d+)"))
+        local n = tonumber(t:match("increased " .. s .. " %+(%d+)") or "")
         if n then return "WeaponSkill", n end
     end
     return nil
+end
+
+----------------------------------------------------------------------
+-- WoW Forever: "Use:" buffs and "Chance on hit:" procs, as their AVERAGE stats (the user,
+-- 2026-11-15: "i dont understand why we cant read the Equip or use on items" / "yes build it").
+-- Before, they got a flat guess that VoidBags dropped, so a trinket's +260 attack power counted 0.
+--   Use:  a buff of N for D seconds every C seconds = N x D / C on average:
+--         "Use: Increases your attack power by 260 for 20 sec. (2 Min Cooldown)"  -> AP 43
+--   Chance on hit: Classic weapon procs fire about once a minute (1 PPM):
+--         damage "... causing 72 Nature damage" -> 72 / 60 = 1.2 weapon DPS
+--         a buff "... increases your attack power by 50 for 10 sec" -> 50 x 10 / 60
+--   "Equip: 2% chance on hit to gain 1 extra attack." -> about 2% more swings, worth crit 2%
+-- Returns a list { {key, amount}, ... }; an empty list = understood, worth nothing for gear
+-- (a stun, a heal, a speed boost); nil = not understood (logged: VoidGearDB.unreadLines).
+----------------------------------------------------------------------
+local BUFF_STATS = { strength = "Strength", agility = "Agility", stamina = "Stamina",
+    intellect = "Intellect", spirit = "Spirit" }
+local PROC_PER_MIN = 1
+
+local function seconds(n, unit)
+    n = tonumber(n)
+    if not n then return nil end
+    unit = unit:lower()
+    if unit:find("^h") then return n * 3600 end
+    if unit:find("^m") then return n * 60 end
+    return n
+end
+-- "(1 Min 30 Sec Cooldown)", "(5 Min Cooldown)", "(30 Sec Cooldown)", "(1 Hour Cooldown)"
+local function cooldownOf(t)
+    local cd = t:match("%(([^()]-) cooldown%)")
+    if not cd then return nil end
+    local total = 0
+    for n, unit in cd:gmatch("(%d+)%s*(%a+)") do total = total + (seconds(n, unit) or 0) end
+    return total > 0 and total or nil
+end
+local function durationOf(t)
+    local n, unit = t:match("for (%d+) (%a+)")
+    return n and seconds(n, unit) or nil
+end
+
+-- the stat a buff text raises: key, amount (amount per 1 for percent stats)
+-- every stat a buff text raises: { {key, amount}, ... } (amount per 1 for percent stats). All of
+-- them: "attack speed by 25% and spell casting speed by 33%" is two (Codex review).
+local function buffStats(t)
+    local out = {}
+    local function add(key, n) if key and n then out[#out + 1] = { key, n } end end
+    local n = tonumber((t:match("attack power by (%d+)") or ""))
+    -- "melee and ranged attack power" (Earthstrike) is attack power; only a ranged-only one is ranged
+    -- (Codex release gate: it scored zero for melee)
+    local rangedOnly = t:find("ranged attack power", 1, true) and not t:find("melee and ranged", 1, true)
+    if n then add(rangedOnly and "RangedAttackPower" or "AttackPower", n) end
+    n = tonumber((t:match("damage and healing done by magical spells and effects by up to (%d+)") or ""))
+    if n then add("SpellPower", n)
+    else
+        n = tonumber((t:match("healing done by %a* ?spells and effects by up to (%d+)") or ""))
+        if n then add("Healing", n) end
+    end
+    add("Armor", tonumber((t:match("armor by (%d+)") or "")))
+    for word, key in pairs(BUFF_STATS) do add(key, tonumber((t:match(word .. " by (%d+)") or ""))) end
+    local p = tonumber((t:match("critical strike[%a ]-by (%d+)%%") or t:match("crit[%a ]-by (%d+)%%") or ""))
+    if p then add(t:find("spell", 1, true) and "SpellCritPct" or "CritPct", p) end
+    p = tonumber((t:match("chance to hit[%a ]-by (%d+)%%") or ""))
+    if p then add(t:find("spell", 1, true) and "SpellHitPct" or "HitPct", p) end
+    add("HastePct", tonumber((t:match("attack speed by (%d+)%%") or "")))
+    add("SpellHastePct", tonumber((t:match("casting speed by (%d+)%%") or "")))
+    return out
+end
+
+-- buffs that do nothing for a gear comparison: understood, worth 0
+local NOTHING = { "run speed", "movement speed", "swim speed", "stun", "knock", "fear", "slow",
+    "heal", "restores", "absorb", "resistance", "immune", "transform", "water breathing", "stealth",
+    "threat", "pet", "mount", "fishing", "when struck", "mana cost" }
+local function nothing(t)
+    for _, w in ipairs(NOTHING) do if t:find(w, 1, true) then return true end end
+    return false
+end
+
+function EV:ClassicEffect(kind, text)
+    local t = text:lower():gsub("%s+", " ")
+    -- extra attacks (Hand of Justice style): a share of your swings again, worth that much crit
+    local pct, extra = t:match("(%d+)%% chance on hit to gain (%d+) extra attack")
+    if pct then return { { "CritPct", tonumber(pct) * tonumber(extra) } } end
+    local isProc = kind == "Chance on hit" or t:find("chance on hit", 1, true) or t:find("chance on melee hit", 1, true)
+    local stats = buffStats(t)
+    if kind == "Use" and not isProc then
+        local dur, cd = durationOf(t), cooldownOf(t)
+        if #stats > 0 and dur and cd then
+            local out = {}
+            for _, s in ipairs(stats) do out[#out + 1] = { s[1], s[2] * math.min(1, dur / cd) } end
+            return out
+        end
+        if nothing(t) then return {} end
+        return nil
+    end
+    if isProc then
+        -- proc damage: "for 72 Nature damage", "causing 30 to 40 damage", "inflicts 50 damage";
+        -- over time: "20 damage every 2 sec for 10 sec" = every tick (Codex review)
+        -- the over-time part with its own tick (Codex: an initial hit must not be multiplied)
+        local tick, every, over = t:match("(%d+) %a* ?damage every (%d+) sec%a* for (%d+) sec")
+        local dot = (tick and tonumber(every) > 0) and tonumber(tick) * math.floor(tonumber(over) / tonumber(every)) or 0
+        local rest = tick and t:gsub("%d+ %a* ?damage every %d+ sec%a* for %d+ sec", "") or t
+        -- a total over time: "and an additional 60 damage over 6 sec" (Codex release gate: it was lost)
+        local total = tonumber((rest:match("(%d+) %a* ?damage over %d+ sec") or ""))
+        if total then
+            dot = dot + total
+            rest = rest:gsub("%d+ %a* ?damage over %d+ sec", "")
+        end
+        local a, b = rest:match("(%d+) to (%d+) %a* ?damage")
+        local dmg = a and (tonumber(a) + tonumber(b)) / 2 or tonumber((rest:match("(%d+) %a* ?damage") or "")) or 0
+        dmg = dmg + dot
+        local dur = durationOf(t)
+        local out = {}
+        if dmg and dmg > 0 and #stats == 0 then out[#out + 1] = { "DPS", dmg * PROC_PER_MIN / 60 } end
+        if dur then
+            for _, s in ipairs(stats) do out[#out + 1] = { s[1], s[2] * math.min(1, dur * PROC_PER_MIN / 60) } end
+        end
+        if #out > 0 then return out end
+        if nothing(t) then return {} end
+        return nil
+    end
+    -- an Equip line that isn't a stat (ClassicStat had it first): thorns, mana cost of one spell...
+    if nothing(t) then return {} end
+    return nil
+end
+
+-- a line nothing could read: kept with how often it was seen, so its wording can be added
+function EV:LogUnread(text)
+    if not VoidGear.IS_FOREVER or type(text) ~= "string" then return end
+    VoidGearDB = VoidGearDB or {}
+    VoidGearDB.unreadLines = VoidGearDB.unreadLines or {}
+    local u = VoidGearDB.unreadLines
+    if u[text] then u[text] = u[text] + 1; return end
+    local n = 0
+    for _ in pairs(u) do n = n + 1; if n >= 300 then return end end
+    u[text] = 1
 end
 
 ----------------------------------------------------------------------
@@ -282,15 +419,21 @@ function EV:ValueExtras(link, weights, primary, budgetPerIlvl, opts)
         for _, eff in ipairs(self:ExtractEffects(lines)) do
             -- WoW Forever: a Classic stat line goes to details.classic (ItemScorer adds it to the
             -- stat score); an Equip line it can't read is worth nothing, never a flat guess
-            local key, amt
+            local key, amt, parts
             if VoidGear.IS_FOREVER and eff.kind == "Equip" then key, amt = self:ClassicStat(eff.text) end
-            if key then
-                if key ~= "" then
-                    details.classic = details.classic or {}
-                    details.classic[key] = (details.classic[key] or 0) + amt
+            -- not a plain stat: a Use buff or a proc, as its average (ClassicEffect)
+            if VoidGear.IS_FOREVER and not key then parts = self:ClassicEffect(eff.kind, eff.text) end
+            if key or parts then
+                for _, p in ipairs(parts or { { key, amt } }) do
+                    if p[1] ~= "" then
+                        details.classic = details.classic or {}
+                        details.classic[p[1]] = (details.classic[p[1]] or 0) + p[2]
+                    end
                 end
-            elseif VoidGear.IS_FOREVER and eff.kind == "Equip" then
+            elseif VoidGear.IS_FOREVER then
+                -- nothing could read it: worth nothing, and kept so its wording can be added
                 details.effects[#details.effects + 1] = { class = "unread", value = 0, estimate = true }
+                self:LogUnread(eff.text)
             else
                 local r = self:ClassifyEffect(eff, weights, primary, ilvl, budgetPerIlvl or 0, spellID)
                 details.effects[#details.effects + 1] = r

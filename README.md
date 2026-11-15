@@ -49,6 +49,7 @@ VoidGear compares your gear with the top Mythic+ players of your spec, then tell
   - **Quest upgrades:** quest rewards you can still get that beat what you wear; click one for the way to the quest giver (needs **VoidQuest**)
   - Closest to your level first, only what your class can wear or wield
 - **Classic stats count:** crit %, hit %, attack power, spell damage, healing, mp5, defense, dodge / parry / block, weapon skill and caster wands, for VoidBags' upgrade arrows and VoidQuest's reward advice too
+- **"Use:" and "Chance on hit:" effects count:** a trinket's Use buff counts as its average over the cooldown (260 attack power for 20 sec every 2 min is about 43), a weapon proc's damage at about one proc a minute, an extra attack like crit. Effects that don't change a gear choice (stuns, speed, heals) count as nothing
 
 ### Easy to reach
 - **Gear Plan tab** on the Character window (a round icon if you use Chonky Character Sheet), the minimap button, or `/vgear`

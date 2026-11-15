@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.0] — 2026-11-15
+
+- **WoW Forever: "Use:" and "Chance on hit:" effects now count.** A trinket's "Use: Increases your attack power by 260 for 20 sec (2 Min Cooldown)" counts as about 43 attack power (its average), a weapon proc's damage counts at about one proc a minute, damage-over-time procs count every tick, and "chance on hit to gain an extra attack" counts like crit. Effects that don't help a gear comparison (stuns, speed, heals) count as nothing. Before, these were a rough guess that VoidBags ignored.
+- **Fixed: decimal percentages weren't read.** "Improves your chance to hit by 0.4%" (Pyrewood Signet Ring) counted as nothing; it now counts as 0.4% hit.
+- Attack speed and casting speed buffs have a value for the classes that use them.
+
 ## [1.2.3] — 2026-11-12
 
 - **Fixed: a side of a box could be missing**, e.g. the right line of the recipes box and its buttons when the game window is an odd number of pixels wide. Every Void box now always shows all four border lines.
