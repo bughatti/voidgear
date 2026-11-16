@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.3.1] — 2026-11-16
+
+- **WoW Forever, "Your gear": clearer scores.** A white vest read "0 Armor", as if it had no armor. Small scores now keep a decimal and say what they come from: "0.2 from Armor".
+- **Windows open in front** of the Void windows already open.
+
 ## [1.3.0] — 2026-11-15
 
 - **WoW Forever: "Use:" and "Chance on hit:" effects now count.** A trinket's "Use: Increases your attack power by 260 for 20 sec (2 Min Cooldown)" counts as about 43 attack power (its average), a weapon proc's damage counts at about one proc a minute, damage-over-time procs count every tick, and "chance on hit to gain an extra attack" counts like crit. Effects that don't help a gear comparison (stuns, speed, heals) count as nothing. Before, these were a rough guess that VoidBags ignored.

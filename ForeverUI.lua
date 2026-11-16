@@ -342,8 +342,11 @@ local function GearLines()
             table.sort(parts, function(a, b) return a[2] > b[2] end)
             local top = {}
             for i = 1, math.min(3, #parts) do top[i] = STAT_SHORT[parts[i][1]] or parts[i][1] end
-            lines[#lines + 1] = { link = link, text = ("|cff9a9aa6%-9s|r %s  |cffffd200%d|r  |cff9a9aa6%s|r"):format(
-                SLOT_NAME[slot] or "", link, math.floor(s + 0.5), table.concat(top, ", ")) }
+            -- "0 Armor" next to a white vest read as "this has no armor" (the user's son's PC,
+            -- 2026-11-16): small scores keep a decimal and the stats say what the score is from
+            local sc = (s or 0) < 10 and ("%.1f"):format(s or 0) or ("%d"):format(math.floor(s + 0.5))
+            lines[#lines + 1] = { link = link, text = ("|cff9a9aa6%-9s|r %s  |cffffd200%s|r  |cff9a9aa6%s|r"):format(
+                SLOT_NAME[slot] or "", link, sc, #top > 0 and ("from " .. table.concat(top, ", ")) or "") }
         else
             lines[#lines + 1] = { text = ("|cff9a9aa6%-9s|r |cff666666(empty)|r"):format(SLOT_NAME[slot] or "") }
         end
@@ -396,7 +399,7 @@ function F:Refresh()
     local lines
     if current == "gear" then
         lines = GearLines()
-        note:SetText("Your gear with your class's weights (on Forever the spec doesn't matter). Hover an item for its tooltip.")
+        note:SetText("Gold = its score with your class's weights, then what it comes from (on Forever the spec doesn't matter).")
     elseif current == "dungeons" then
         lines = UpgradeLines(DungeonRows(lvl), "dungeons")
         note:SetText("Drops from dungeons near your level that beat what you wear, best first; % = drop chance. Up to 3 levels ahead.")
