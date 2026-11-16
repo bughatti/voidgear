@@ -95,7 +95,7 @@ VoidGear compares your gear with the top Mythic+ players of your spec, then tell
 ## Compatibility
 
 - **WoW Midnight** 12.1.5 (Season 2)
-- **WoW Forever**: scores your drops for VoidBags' upgrade arrows; the gear planner is Midnight only
+- **WoW Forever**: its own gear panel (your gear scored for your class, dungeon and quest upgrades) and the scoring behind VoidBags' upgrade arrows; the Mythic+ planner (enchants, gems, crests) is Midnight only
 - Standalone: nothing else to install
 - Works alongside VoidAH (shopping list), VoidBags and Chonky Character Sheet
 
