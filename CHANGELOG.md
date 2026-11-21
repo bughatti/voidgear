@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.3.2] — 2026-11-21
+
+- **Fixed on WoW Forever: per-character settings.** The game stopped telling addons your realm's name, so your character's own settings were no longer loaded or saved. They are again, from where they were saved before.
+
 ## [1.3.1] — 2026-11-16
 
 - **WoW Forever, "Your gear": clearer scores.** A white vest read "0 Armor", as if it had no armor. Small scores now keep a decimal and say what they come from: "0.2 from Armor".
